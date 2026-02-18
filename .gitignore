@@ -1,0 +1,5 @@
+/selfstack
+/dashboard/node_modules
+/dashboard/dist
+*.db
+.selfstack/
