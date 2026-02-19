@@ -16,7 +16,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const defaultRegistryURL = "https://raw.githubusercontent.com/selfstack/registry/main/registry.json"
+const defaultRegistryURL = "https://raw.githubusercontent.com/Avanderheyde/selfstack-registry/main/registry.json"
 
 var serveCmd = &cobra.Command{
 	Use:   "serve",
