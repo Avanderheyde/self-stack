@@ -8,7 +8,9 @@ import (
 
 	"github.com/selfstack/selfstack/internal/api"
 	"github.com/selfstack/selfstack/internal/app"
+	"github.com/selfstack/selfstack/internal/auth"
 	"github.com/selfstack/selfstack/internal/config"
+	"github.com/selfstack/selfstack/internal/proxy"
 	"github.com/selfstack/selfstack/internal/registry"
 	"github.com/selfstack/selfstack/internal/store"
 	"github.com/spf13/cobra"
@@ -32,10 +34,34 @@ var serveCmd = &cobra.Command{
 
 		reg := registry.NewClient(defaultRegistryURL)
 		appSvc := app.NewService(s, reg)
-		srv := api.NewServer(appSvc, reg)
 
+		// Initialize auth
+		a, err := auth.New(config.KeysPath())
+		if err != nil {
+			return fmt.Errorf("init auth: %w", err)
+		}
+		_ = a // Auth middleware can be wired in when ready
+
+		// Create reverse proxy and register running apps
+		p := proxy.New()
+		apps, _ := appSvc.List()
+		for _, app := range apps {
+			if app.Status == "running" {
+				p.Register(app.Name, app.HostPort)
+			}
+		}
+
+		// Start reverse proxy on port 8081 (dev) — use port 80 in production
+		go func() {
+			proxyAddr := ":8081"
+			log.Printf("Reverse proxy on %s", proxyAddr)
+			http.ListenAndServe(proxyAddr, p)
+		}()
+
+		// Start API + dashboard on main port
+		srv := api.NewServer(appSvc, reg)
 		addr := fmt.Sprintf(":%d", config.DefaultPort)
-		log.Printf("SelfStack server starting on %s", addr)
+		log.Printf("SelfStack dashboard on %s", addr)
 		return http.ListenAndServe(addr, srv)
 	},
 }
