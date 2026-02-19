@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/selfstack/selfstack/internal/app"
+	"github.com/selfstack/selfstack/internal/dashboard"
 	"github.com/selfstack/selfstack/internal/registry"
 )
 
@@ -33,6 +34,8 @@ func NewServer(appSvc *app.Service, reg *registry.Client) *Server {
 		r.Delete("/apps/{name}", s.handleRemoveApp)
 		r.Get("/registry/search", s.handleRegistrySearch)
 	})
+
+	r.Handle("/*", dashboard.Handler())
 
 	s.router = r
 	return s
