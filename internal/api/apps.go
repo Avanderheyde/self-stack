@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/selfstack/selfstack/internal/registry"
+	"github.com/selfstack/selfstack/internal/store"
 )
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -26,6 +27,9 @@ func (s *Server) handleListApps(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		jsonError(w, 500, err.Error())
 		return
+	}
+	if apps == nil {
+		apps = []store.App{}
 	}
 	jsonResponse(w, 200, apps)
 }
