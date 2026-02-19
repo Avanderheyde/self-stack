@@ -1,7 +1,7 @@
 package main
 
-import "fmt"
+import "github.com/selfstack/selfstack/cmd"
 
 func main() {
-	fmt.Println("selfstack v0.1.0")
+	cmd.Execute()
 }
