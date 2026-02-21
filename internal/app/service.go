@@ -30,6 +30,12 @@ func (s *Service) Install(ctx context.Context, appName string) error {
 		return err
 	}
 	appDir := filepath.Join(config.AppsDir(), appName)
+
+	// Clean up orphaned directory from a previous failed install
+	if _, err := s.store.GetApp(appName); err != nil {
+		os.RemoveAll(appDir)
+	}
+
 	if err := os.MkdirAll(filepath.Dir(appDir), 0755); err != nil {
 		return err
 	}
@@ -37,16 +43,25 @@ func (s *Service) Install(ctx context.Context, appName string) error {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git clone: %s: %w", string(out), err)
 	}
+
+	// On failure after clone, clean up the directory and port
+	cleanup := func() {
+		os.RemoveAll(appDir)
+		s.store.ReleasePort(appName)
+	}
+
 	m, err := manifest.ParseFile(filepath.Join(appDir, "selfstack.yml"))
 	if err != nil {
+		os.RemoveAll(appDir)
 		return fmt.Errorf("parse manifest: %w", err)
 	}
 	port, err := s.store.AllocatePort(appName)
 	if err != nil {
+		os.RemoveAll(appDir)
 		return fmt.Errorf("allocate port: %w", err)
 	}
 	if err := s.mgr.Build(ctx, appDir, m.Runtime.Entry); err != nil {
-		s.store.ReleasePort(appName)
+		cleanup()
 		return err
 	}
 	envVars := make(map[string]string)
@@ -54,7 +69,7 @@ func (s *Service) Install(ctx context.Context, appName string) error {
 		envVars[c.Key] = c.Default
 	}
 	if err := s.mgr.Up(ctx, appDir, m.Runtime.Entry, appName, m.Expose.Port, port, envVars); err != nil {
-		s.store.ReleasePort(appName)
+		cleanup()
 		return err
 	}
 	if err := s.store.InsertApp(store.App{
