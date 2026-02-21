@@ -34,6 +34,16 @@ func (s *Server) handleListApps(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, 200, apps)
 }
 
+func (s *Server) handleGetApp(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	a, err := s.appSvc.Get(name)
+	if err != nil {
+		jsonError(w, errStatus(err), err.Error())
+		return
+	}
+	jsonResponse(w, 200, a)
+}
+
 func (s *Server) handleInstallApp(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name string `json:"name"`

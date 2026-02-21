@@ -18,6 +18,8 @@ import (
 
 const defaultRegistryURL = "https://raw.githubusercontent.com/Avanderheyde/selfstack-registry/main/registry.json"
 
+var servePort int
+
 var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Start the SelfStack server",
@@ -60,10 +62,17 @@ var serveCmd = &cobra.Command{
 
 		// Start API + dashboard on main port
 		srv := api.NewServer(appSvc, reg)
-		addr := fmt.Sprintf(":%d", config.DefaultPort)
+		port := servePort
+		if port == 0 {
+			port = config.DefaultPort
+		}
+		addr := fmt.Sprintf(":%d", port)
 		log.Printf("SelfStack dashboard on %s", addr)
 		return http.ListenAndServe(addr, srv)
 	},
 }
 
-func init() { rootCmd.AddCommand(serveCmd) }
+func init() {
+	serveCmd.Flags().IntVarP(&servePort, "port", "p", 0, "Port to listen on (default 8080)")
+	rootCmd.AddCommand(serveCmd)
+}

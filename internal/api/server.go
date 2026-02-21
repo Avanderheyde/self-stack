@@ -31,6 +31,7 @@ func NewServer(appSvc *app.Service, reg *registry.Client) *Server {
 		r.Post("/apps/install", s.handleInstallApp)
 		r.Post("/apps/{name}/start", s.handleStartApp)
 		r.Post("/apps/{name}/stop", s.handleStopApp)
+		r.Get("/apps/{name}", s.handleGetApp)
 		r.Delete("/apps/{name}", s.handleRemoveApp)
 		r.Get("/registry/search", s.handleRegistrySearch)
 	})
