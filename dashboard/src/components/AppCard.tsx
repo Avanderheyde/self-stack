@@ -35,16 +35,19 @@ export default function AppCard({
 }: {
   app: RegistryApp;
   installed: boolean;
-  onInstall: (name: string) => Promise<void>;
+  onInstall: (name: string, onStep: (step: string) => void) => Promise<void>;
 }) {
   const [installing, setInstalling] = useState(false);
+  const [progressStep, setProgressStep] = useState('');
 
   const handleInstall = async () => {
     setInstalling(true);
+    setProgressStep('');
     try {
-      await onInstall(app.name);
+      await onInstall(app.name, setProgressStep);
     } finally {
       setInstalling(false);
+      setProgressStep('');
     }
   };
 
@@ -76,7 +79,7 @@ export default function AppCard({
             disabled={installing}
             className="text-sm font-medium px-4 py-1.5 rounded-lg bg-gray-900 text-white hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {installing ? 'Installing...' : 'Install'}
+            {installing ? (progressStep || 'Installing...') : 'Install'}
           </button>
         )}
       </div>

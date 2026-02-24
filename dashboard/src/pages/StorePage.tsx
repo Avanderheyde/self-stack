@@ -27,8 +27,9 @@ export default function StorePage() {
   const categories = [...new Set(apps.map((a) => a.category).filter(Boolean))];
   const filtered = category ? apps.filter((a) => a.category === category) : apps;
 
-  const handleInstall = async (name: string) => {
-    await installApp(name);
+  const handleInstall = async (name: string, onStep: (step: string) => void) => {
+    await installApp(name, onStep);
+    setInstalled((prev) => new Set(prev).add(name));
   };
 
   const handleSearch = useCallback((q: string) => setQuery(q), []);

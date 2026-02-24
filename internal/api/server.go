@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -32,6 +33,8 @@ func NewServer(appSvc *app.Service, reg *registry.Client) *Server {
 		r.Post("/apps/{name}/start", s.handleStartApp)
 		r.Post("/apps/{name}/stop", s.handleStopApp)
 		r.Get("/apps/{name}", s.handleGetApp)
+		r.Patch("/apps/{name}/port", s.handleUpdatePort)
+		r.Post("/apps/{name}/update", s.handleUpdateApp)
 		r.Delete("/apps/{name}", s.handleRemoveApp)
 		r.Get("/registry/search", s.handleRegistrySearch)
 	})
@@ -56,6 +59,12 @@ func jsonResponse(w http.ResponseWriter, status int, data any) {
 
 func jsonError(w http.ResponseWriter, status int, msg string) {
 	jsonResponse(w, status, map[string]string{"error": msg})
+}
+
+func sseEvent(w http.ResponseWriter, flusher http.Flusher, data any) {
+	buf, _ := json.Marshal(data)
+	fmt.Fprintf(w, "data: %s\n\n", buf)
+	flusher.Flush()
 }
 
 func errStatus(err error) int {

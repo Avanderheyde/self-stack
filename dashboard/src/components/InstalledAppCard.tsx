@@ -28,12 +28,14 @@ function AppIcon({ app, iconUrl }: { app: App; iconUrl?: string }) {
 export default function InstalledAppCard({
   app,
   iconUrl,
+  latestVersion,
   onStart,
   onStop,
   onRemove,
 }: {
   app: App;
   iconUrl?: string;
+  latestVersion?: string;
   onStart: (name: string) => Promise<void>;
   onStop: (name: string) => Promise<void>;
   onRemove: (name: string) => Promise<void>;
@@ -46,16 +48,21 @@ export default function InstalledAppCard({
   };
 
   return (
-    <div className="border border-gray-200 rounded-xl p-5 hover:shadow-md transition-shadow">
+    <Link
+      to={`/apps/${app.Name}`}
+      className="block border border-gray-200 rounded-xl p-5 hover:shadow-md transition-shadow"
+    >
       <div className="flex items-start gap-4">
         <AppIcon app={app} iconUrl={iconUrl} />
         <div className="flex-1 min-w-0">
-          <Link
-            to={`/apps/${app.Name}`}
-            className="font-semibold text-gray-900 hover:text-gray-600 transition-colors"
-          >
-            {app.DisplayName || app.Name}
-          </Link>
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-gray-900">
+              {app.DisplayName || app.Name}
+            </span>
+            {latestVersion && latestVersion !== app.Version && (
+              <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" title="Update available" />
+            )}
+          </div>
           <p className="text-sm text-gray-500 mt-1 line-clamp-2">{app.Description}</p>
         </div>
       </div>
@@ -63,29 +70,25 @@ export default function InstalledAppCard({
         <div className="flex items-center gap-3">
           <StatusBadge status={app.Status} />
           {app.Status === 'running' && app.HostPort > 0 && (
-            <a
-              href={`http://localhost:${app.HostPort}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-blue-600 hover:text-blue-800 transition-colors"
-            >
+            <span className="text-xs text-blue-600">
               :{app.HostPort}
-            </a>
+            </span>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2" onClick={(e) => e.preventDefault()}>
           {app.Status === 'running' && (
             <>
               <a
                 href={`http://localhost:${app.HostPort}`}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
                 className="text-xs px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
               >
                 Open
               </a>
               <button
-                onClick={() => run(onStop)}
+                onClick={(e) => { e.stopPropagation(); run(onStop); }}
                 disabled={busy}
                 className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50 transition-colors"
               >
@@ -95,7 +98,7 @@ export default function InstalledAppCard({
           )}
           {app.Status === 'stopped' && (
             <button
-              onClick={() => run(onStart)}
+              onClick={(e) => { e.stopPropagation(); run(onStart); }}
               disabled={busy}
               className="text-xs px-3 py-1.5 rounded-lg bg-gray-900 text-white hover:bg-gray-700 disabled:opacity-50 transition-colors"
             >
@@ -103,7 +106,8 @@ export default function InstalledAppCard({
             </button>
           )}
           <button
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               if (confirm(`Remove ${app.DisplayName || app.Name}?`)) run(onRemove);
             }}
             disabled={busy}
@@ -113,6 +117,6 @@ export default function InstalledAppCard({
           </button>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }

@@ -16,6 +16,7 @@ type AppEntry struct {
 	Repo        string `json:"repo"`
 	Icon        string `json:"icon"`
 	Verified    bool   `json:"verified"`
+	Version     string `json:"version"`
 }
 
 type Catalog struct {

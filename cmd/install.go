@@ -22,7 +22,10 @@ var installCmd = &cobra.Command{
 		}
 		defer resp.Body.Close()
 		out, _ := io.ReadAll(resp.Body)
-		if resp.StatusCode != 201 {
+		if resp.StatusCode != 200 {
+			return fmt.Errorf("install failed: %s", string(out))
+		}
+		if bytes.Contains(out, []byte(`"error"`)) {
 			return fmt.Errorf("install failed: %s", string(out))
 		}
 		fmt.Printf("Installed %s successfully\n", args[0])

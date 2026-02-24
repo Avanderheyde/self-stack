@@ -180,6 +180,50 @@ func TestUpdateAppStatus_NotFound(t *testing.T) {
 	}
 }
 
+func TestUpdateAppMeta(t *testing.T) {
+	s := testDB(t)
+
+	app := App{
+		Name:        "metaapp",
+		DisplayName: "Old Name",
+		Description: "Old desc",
+		RepoURL:     "https://example.com/m",
+		Version:     "0.1.0",
+		HostPort:    10001,
+		Status:      "stopped",
+	}
+	if err := s.InsertApp(app); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.UpdateAppMeta("metaapp", "New Name", "New desc", "0.2.0"); err != nil {
+		t.Fatalf("UpdateAppMeta: %v", err)
+	}
+
+	got, err := s.GetApp("metaapp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.DisplayName != "New Name" {
+		t.Errorf("DisplayName = %q, want %q", got.DisplayName, "New Name")
+	}
+	if got.Description != "New desc" {
+		t.Errorf("Description = %q, want %q", got.Description, "New desc")
+	}
+	if got.Version != "0.2.0" {
+		t.Errorf("Version = %q, want %q", got.Version, "0.2.0")
+	}
+}
+
+func TestUpdateAppMeta_NotFound(t *testing.T) {
+	s := testDB(t)
+
+	err := s.UpdateAppMeta("ghost", "Name", "Desc", "1.0.0")
+	if err == nil {
+		t.Fatal("expected error updating nonexistent app")
+	}
+}
+
 // --- Port allocator tests ---
 
 func TestAllocatePort_StartsAt10001(t *testing.T) {
@@ -273,13 +317,60 @@ func TestGetPort_NotFound(t *testing.T) {
 	}
 }
 
-func TestAllocatePort_DuplicateApp(t *testing.T) {
+func TestAllocatePort_Idempotent(t *testing.T) {
 	s := testDB(t)
 
-	if _, err := s.AllocatePort("app1"); err != nil {
+	p1, err := s.AllocatePort("app1")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.AllocatePort("app1"); err == nil {
-		t.Fatal("expected error allocating port for same app twice")
+	p2, err := s.AllocatePort("app1")
+	if err != nil {
+		t.Fatalf("second AllocatePort should succeed: %v", err)
+	}
+	if p1 != p2 {
+		t.Errorf("idempotent ports differ: %d vs %d", p1, p2)
+	}
+}
+
+func TestUpdatePort(t *testing.T) {
+	s := testDB(t)
+
+	s.AllocatePort("app1") // 10001
+	if err := s.InsertApp(App{Name: "app1", DisplayName: "App1", RepoURL: "https://example.com/a1", HostPort: 10001, Status: "stopped"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.UpdatePort("app1", 9000); err != nil {
+		t.Fatalf("UpdatePort: %v", err)
+	}
+
+	port, err := s.GetPort("app1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if port != 9000 {
+		t.Errorf("port = %d, want 9000", port)
+	}
+
+	app, err := s.GetApp("app1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if app.HostPort != 9000 {
+		t.Errorf("app.HostPort = %d, want 9000", app.HostPort)
+	}
+}
+
+func TestUpdatePort_Conflict(t *testing.T) {
+	s := testDB(t)
+
+	s.AllocatePort("app1") // 10001
+	s.AllocatePort("app2") // 10002
+	s.InsertApp(App{Name: "app1", DisplayName: "A1", RepoURL: "https://example.com/a1", HostPort: 10001, Status: "stopped"})
+	s.InsertApp(App{Name: "app2", DisplayName: "A2", RepoURL: "https://example.com/a2", HostPort: 10002, Status: "stopped"})
+
+	if err := s.UpdatePort("app1", 10002); err == nil {
+		t.Fatal("expected error updating to port already taken by another app")
 	}
 }

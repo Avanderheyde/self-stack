@@ -71,6 +71,24 @@ func (s *Store) DeleteApp(name string) error {
 	return nil
 }
 
+func (s *Store) UpdateAppMeta(name, displayName, description, version string) error {
+	res, err := s.db.Exec(
+		`UPDATE apps SET display_name = ?, description = ?, version = ? WHERE name = ?`,
+		displayName, description, version, name,
+	)
+	if err != nil {
+		return fmt.Errorf("update app meta: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("app %q not found", name)
+	}
+	return nil
+}
+
 func (s *Store) UpdateAppStatus(name, status string) error {
 	res, err := s.db.Exec(`UPDATE apps SET status = ? WHERE name = ?`, status, name)
 	if err != nil {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { getApp, searchRegistry, startApp, stopApp, removeApp } from '../api';
+import { getApp, searchRegistry, startApp, stopApp, removeApp, updateApp, updatePort } from '../api';
 import type { App } from '../api';
 import StatusBadge from '../components/StatusBadge';
 
@@ -10,6 +10,11 @@ export default function AppDetailPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [iconUrl, setIconUrl] = useState<string | undefined>();
+  const [editingPort, setEditingPort] = useState(false);
+  const [portValue, setPortValue] = useState('');
+  const [latestVersion, setLatestVersion] = useState<string | undefined>();
+  const [updating, setUpdating] = useState(false);
+  const [updateStep, setUpdateStep] = useState('');
 
   const load = useCallback(async () => {
     if (!name) return;
@@ -20,6 +25,9 @@ export default function AppDetailPage() {
       const entry = registry.find((r) => r.name === name);
       if (entry?.icon && (entry.icon.startsWith('http://') || entry.icon.startsWith('https://'))) {
         setIconUrl(entry.icon);
+      }
+      if (entry?.version) {
+        setLatestVersion(entry.version);
       }
     } catch {
       setApp(null);
@@ -95,12 +103,87 @@ export default function AppDetailPage() {
                   localhost:{app.HostPort}
                 </a>
               )}
+              {app.Status === 'stopped' && app.HostPort > 0 && !editingPort && (
+                <button
+                  onClick={() => { setPortValue(String(app.HostPort)); setEditingPort(true); }}
+                  className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
+                >
+                  Port {app.HostPort}
+                </button>
+              )}
+              {app.Status === 'stopped' && editingPort && (
+                <form
+                  className="flex items-center gap-1"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    const p = parseInt(portValue, 10);
+                    if (isNaN(p)) return;
+                    setBusy(true);
+                    try {
+                      await updatePort(name!, p);
+                      setEditingPort(false);
+                      await load();
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  <input
+                    type="number"
+                    min={1024}
+                    max={65535}
+                    value={portValue}
+                    onChange={(e) => setPortValue(e.target.value)}
+                    className="w-24 text-sm px-2 py-1 border border-gray-300 rounded-md"
+                  />
+                  <button
+                    type="submit"
+                    disabled={busy}
+                    className="text-sm px-2 py-1 rounded-md bg-gray-900 text-white hover:bg-gray-700 disabled:opacity-50"
+                  >
+                    Update
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingPort(false)}
+                    className="text-sm px-2 py-1 text-gray-500 hover:text-gray-700"
+                  >
+                    Cancel
+                  </button>
+                </form>
+              )}
               {app.Version && (
                 <span className="text-xs text-gray-400">v{app.Version}</span>
               )}
             </div>
           </div>
         </div>
+
+        {latestVersion && latestVersion !== app.Version && (
+          <div className="flex items-center justify-between mt-6 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <span className="text-sm text-amber-800">
+              Update available (v{app.Version || '0.0.0'} → v{latestVersion})
+            </span>
+            <button
+              onClick={async () => {
+                if (!name) return;
+                setUpdating(true);
+                setUpdateStep('');
+                try {
+                  await updateApp(name, setUpdateStep);
+                  await load();
+                } finally {
+                  setUpdating(false);
+                  setUpdateStep('');
+                }
+              }}
+              disabled={updating || busy}
+              className="text-sm px-4 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 transition-colors"
+            >
+              {updating ? (updateStep || 'Updating...') : 'Update'}
+            </button>
+          </div>
+        )}
 
         <div className="flex gap-2 mt-6">
           {app.Status === 'running' && (

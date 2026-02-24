@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/selfstack/selfstack/internal/app"
 	"github.com/selfstack/selfstack/internal/registry"
 	"github.com/selfstack/selfstack/internal/store"
 )
@@ -56,16 +57,30 @@ func (s *Server) handleInstallApp(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 400, "name is required")
 		return
 	}
-	if err := s.appSvc.Install(r.Context(), req.Name); err != nil {
-		jsonError(w, 500, err.Error())
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		jsonError(w, 500, "streaming not supported")
 		return
 	}
-	app, err := s.appSvc.Get(req.Name)
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	onProgress := app.ProgressFunc(func(step string) {
+		sseEvent(w, flusher, map[string]string{"step": step})
+	})
+
+	if err := s.appSvc.Install(r.Context(), req.Name, onProgress); err != nil {
+		sseEvent(w, flusher, map[string]string{"error": err.Error()})
+		return
+	}
+	installed, err := s.appSvc.Get(req.Name)
 	if err != nil {
-		jsonError(w, 500, err.Error())
+		sseEvent(w, flusher, map[string]string{"error": err.Error()})
 		return
 	}
-	jsonResponse(w, 201, app)
+	sseEvent(w, flusher, map[string]any{"done": true, "app": installed})
 }
 
 func (s *Server) handleStartApp(w http.ResponseWriter, r *http.Request) {
@@ -93,6 +108,50 @@ func (s *Server) handleRemoveApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonResponse(w, 200, map[string]string{"status": "removed"})
+}
+
+func (s *Server) handleUpdateApp(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		jsonError(w, 500, "streaming not supported")
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	onProgress := app.ProgressFunc(func(step string) {
+		sseEvent(w, flusher, map[string]string{"step": step})
+	})
+
+	if err := s.appSvc.Update(r.Context(), name, onProgress); err != nil {
+		sseEvent(w, flusher, map[string]string{"error": err.Error()})
+		return
+	}
+	updated, err := s.appSvc.Get(name)
+	if err != nil {
+		sseEvent(w, flusher, map[string]string{"error": err.Error()})
+		return
+	}
+	sseEvent(w, flusher, map[string]any{"done": true, "app": updated})
+}
+
+func (s *Server) handleUpdatePort(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	var req struct {
+		Port int `json:"port"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, 400, "invalid request body")
+		return
+	}
+	if err := s.appSvc.UpdatePort(name, req.Port); err != nil {
+		jsonError(w, errStatus(err), err.Error())
+		return
+	}
+	jsonResponse(w, 200, map[string]string{"status": "updated"})
 }
 
 func (s *Server) handleRegistrySearch(w http.ResponseWriter, r *http.Request) {

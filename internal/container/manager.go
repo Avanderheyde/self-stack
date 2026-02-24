@@ -19,7 +19,7 @@ func NewManager() *Manager {
 }
 
 func (m *Manager) Build(ctx context.Context, appDir string, composePath string) error {
-	cmd := exec.CommandContext(ctx, "docker", "compose", "-f", filepath.Join(appDir, composePath), "build")
+	cmd := exec.CommandContext(ctx, "docker", "compose", "-f", filepath.Join(appDir, composePath), "build", "--no-cache")
 	cmd.Dir = appDir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

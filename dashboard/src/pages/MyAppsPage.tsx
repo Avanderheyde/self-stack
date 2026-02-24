@@ -7,6 +7,7 @@ export default function MyAppsPage() {
   const [apps, setApps] = useState<App[]>([]);
   const [loading, setLoading] = useState(true);
   const [icons, setIcons] = useState<Record<string, string>>({});
+  const [latestVersions, setLatestVersions] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -14,12 +15,17 @@ export default function MyAppsPage() {
       const [myApps, registry] = await Promise.all([getApps(), searchRegistry('')]);
       setApps(myApps);
       const map: Record<string, string> = {};
+      const versions: Record<string, string> = {};
       for (const r of registry) {
         if (r.icon && (r.icon.startsWith('http://') || r.icon.startsWith('https://'))) {
           map[r.name] = r.icon;
         }
+        if (r.version) {
+          versions[r.name] = r.version;
+        }
       }
       setIcons(map);
+      setLatestVersions(versions);
     } finally {
       setLoading(false);
     }
@@ -51,6 +57,7 @@ export default function MyAppsPage() {
               key={app.Name}
               app={app}
               iconUrl={icons[app.Name]}
+              latestVersion={latestVersions[app.Name]}
               onStart={handleStart}
               onStop={handleStop}
               onRemove={handleRemove}

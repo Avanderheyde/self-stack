@@ -20,6 +20,7 @@ export interface RegistryApp {
   repo: string;
   icon: string;
   verified: boolean;
+  version: string;
 }
 
 async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
@@ -41,12 +42,59 @@ export async function getApp(name: string): Promise<App> {
   return apiFetch(`${API_BASE}/apps/${encodeURIComponent(name)}`);
 }
 
-export async function installApp(name: string): Promise<App> {
-  return apiFetch(`${API_BASE}/apps/install`, {
+async function readSSEStream(res: Response, onStep?: (step: string) => void): Promise<App> {
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  let result: App | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+
+    let idx: number;
+    while ((idx = buf.indexOf('\n\n')) !== -1) {
+      const raw = buf.slice(0, idx).trim();
+      buf = buf.slice(idx + 2);
+      if (!raw.startsWith('data: ')) continue;
+      const json = raw.slice(6);
+      try {
+        const evt = JSON.parse(json);
+        if (evt.error) {
+          toast(evt.error);
+          throw new Error(evt.error);
+        }
+        if (evt.step && onStep) {
+          onStep(evt.step);
+        }
+        if (evt.done && evt.app) {
+          result = evt.app;
+        }
+      } catch (e) {
+        if (e instanceof SyntaxError) continue;
+        throw e;
+      }
+    }
+  }
+
+  if (!result) throw new Error('Stream ended without completion');
+  return result;
+}
+
+export async function installApp(name: string, onStep?: (step: string) => void): Promise<App> {
+  const res = await fetch(`${API_BASE}/apps/install`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
   });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    const msg = body?.error || `Request failed (${res.status})`;
+    toast(msg);
+    throw new Error(msg);
+  }
+  return readSSEStream(res, onStep);
 }
 
 export async function startApp(name: string): Promise<void> {
@@ -55,6 +103,25 @@ export async function startApp(name: string): Promise<void> {
 
 export async function stopApp(name: string): Promise<void> {
   await apiFetch(`${API_BASE}/apps/${encodeURIComponent(name)}/stop`, { method: 'POST' });
+}
+
+export async function updatePort(name: string, port: number): Promise<void> {
+  await apiFetch(`${API_BASE}/apps/${encodeURIComponent(name)}/port`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ port }),
+  });
+}
+
+export async function updateApp(name: string, onStep?: (step: string) => void): Promise<App> {
+  const res = await fetch(`${API_BASE}/apps/${encodeURIComponent(name)}/update`, { method: 'POST' });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    const msg = body?.error || `Request failed (${res.status})`;
+    toast(msg);
+    throw new Error(msg);
+  }
+  return readSSEStream(res, onStep);
 }
 
 export async function removeApp(name: string): Promise<void> {
