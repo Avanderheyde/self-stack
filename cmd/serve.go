@@ -61,7 +61,7 @@ var serveCmd = &cobra.Command{
 		}()
 
 		// Start API + dashboard on main port
-		srv := api.NewServer(appSvc, reg)
+		srv := api.NewServer(appSvc, reg, Version)
 		port := servePort
 		if port == 0 {
 			port = config.DefaultPort

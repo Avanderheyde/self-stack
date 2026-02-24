@@ -22,7 +22,7 @@ func testServer(t *testing.T) *Server {
 	t.Cleanup(func() { s.Close() })
 	r := registry.NewClient("http://localhost")
 	svc := app.NewService(s, r)
-	return NewServer(svc, r)
+	return NewServer(svc, r, "0.1.0-test")
 }
 
 func TestHandleStatus(t *testing.T) {
@@ -38,8 +38,8 @@ func TestHandleStatus(t *testing.T) {
 	if body["status"] != "ok" {
 		t.Fatalf("expected status ok, got %v", body["status"])
 	}
-	if body["version"] != "0.1.0" {
-		t.Fatalf("expected version 0.1.0, got %v", body["version"])
+	if body["version"] != "0.1.0-test" {
+		t.Fatalf("expected version 0.1.0-test, got %v", body["version"])
 	}
 }
 

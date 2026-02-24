@@ -9,6 +9,8 @@ import (
 
 var apiURL string
 
+var Version = "dev"
+
 var rootCmd = &cobra.Command{
 	Use:   "selfstack",
 	Short: "Personal app server — install, run, and access self-hosted web apps",

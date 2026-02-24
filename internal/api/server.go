@@ -17,11 +17,12 @@ import (
 type Server struct {
 	appSvc   *app.Service
 	registry *registry.Client
+	version  string
 	router   chi.Router
 }
 
-func NewServer(appSvc *app.Service, reg *registry.Client) *Server {
-	s := &Server{appSvc: appSvc, registry: reg}
+func NewServer(appSvc *app.Service, reg *registry.Client, version string) *Server {
+	s := &Server{appSvc: appSvc, registry: reg, version: version}
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)

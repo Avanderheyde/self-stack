@@ -17,7 +17,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonResponse(w, 200, map[string]any{
-		"version": "0.1.0",
+		"version": s.version,
 		"apps":    len(apps),
 		"status":  "ok",
 	})
