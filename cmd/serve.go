@@ -1,10 +1,14 @@
 package cmd
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/selfstack/selfstack/internal/api"
 	"github.com/selfstack/selfstack/internal/app"
@@ -67,6 +71,32 @@ var serveCmd = &cobra.Command{
 			port = config.DefaultPort
 		}
 		addr := fmt.Sprintf(":%d", port)
+
+		// Non-blocking update check
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			req, err := http.NewRequestWithContext(ctx, "GET",
+				fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", githubRepo),
+				nil)
+			if err != nil {
+				return
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil || resp.StatusCode != 200 {
+				return
+			}
+			defer resp.Body.Close()
+			var rel struct{ TagName string `json:"tag_name"` }
+			if json.NewDecoder(resp.Body).Decode(&rel) != nil {
+				return
+			}
+			latest := strings.TrimPrefix(rel.TagName, "v")
+			if latest != Version && Version != "dev" {
+				log.Printf("A new version of SelfStack is available (%s). Run \"selfstack update\" to upgrade.", rel.TagName)
+			}
+		}()
+
 		log.Printf("SelfStack dashboard on %s", addr)
 		return http.ListenAndServe(addr, srv)
 	},
