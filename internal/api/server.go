@@ -38,6 +38,8 @@ func NewServer(appSvc *app.Service, reg *registry.Client, version string) *Serve
 		r.Post("/apps/{name}/update", s.handleUpdateApp)
 		r.Delete("/apps/{name}", s.handleRemoveApp)
 		r.Get("/registry/search", s.handleRegistrySearch)
+		r.Get("/update/check", s.handleUpdateCheck)
+		r.Post("/update/apply", s.handleUpdateApply)
 	})
 
 	r.Handle("/*", dashboard.Handler())

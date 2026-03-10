@@ -1,13 +1,10 @@
 package cmd
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/selfstack/selfstack/internal/api"
@@ -16,6 +13,7 @@ import (
 	"github.com/selfstack/selfstack/internal/config"
 	"github.com/selfstack/selfstack/internal/proxy"
 	"github.com/selfstack/selfstack/internal/registry"
+	"github.com/selfstack/selfstack/internal/selfupdate"
 	"github.com/selfstack/selfstack/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -74,26 +72,21 @@ var serveCmd = &cobra.Command{
 
 		// Non-blocking update check
 		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			defer cancel()
-			req, err := http.NewRequestWithContext(ctx, "GET",
-				fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", githubRepo),
-				nil)
-			if err != nil {
-				return
-			}
-			resp, err := http.DefaultClient.Do(req)
-			if err != nil || resp.StatusCode != 200 {
-				return
-			}
-			defer resp.Body.Close()
-			var rel struct{ TagName string `json:"tag_name"` }
-			if json.NewDecoder(resp.Body).Decode(&rel) != nil {
-				return
-			}
-			latest := strings.TrimPrefix(rel.TagName, "v")
-			if latest != Version && Version != "dev" {
-				log.Printf("A new version of SelfStack is available (%s). Run \"selfstack update\" to upgrade.", rel.TagName)
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				release, err := selfupdate.FetchLatestRelease()
+				if err != nil {
+					return
+				}
+				latest := selfupdate.LatestVersion(release)
+				if latest != Version && Version != "dev" {
+					log.Printf("A new version of SelfStack is available (%s). Run \"selfstack update\" to upgrade.", release.TagName)
+				}
+			}()
+			select {
+			case <-done:
+			case <-time.After(3 * time.Second):
 			}
 		}()
 

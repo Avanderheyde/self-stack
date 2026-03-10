@@ -3,3 +3,4 @@
 /dashboard/dist
 *.db
 .selfstack/
+.playwright-mcp/
