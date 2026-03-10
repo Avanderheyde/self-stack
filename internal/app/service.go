@@ -72,7 +72,7 @@ func (s *Service) Install(ctx context.Context, appName string, onProgress Progre
 		return fmt.Errorf("allocate port: %w", err)
 	}
 	report(onProgress, "Building container")
-	if err := s.mgr.Build(ctx, appDir, m.Runtime.Entry); err != nil {
+	if err := s.mgr.Build(ctx, appDir, m.Runtime.Entry, appName); err != nil {
 		cleanup()
 		return err
 	}
@@ -126,12 +126,14 @@ func (s *Service) Stop(ctx context.Context, appName string) error {
 	return s.store.UpdateAppStatus(app.Name, "stopped")
 }
 
-func (s *Service) Remove(ctx context.Context, appName string) error {
+func (s *Service) Remove(ctx context.Context, appName string, onProgress ProgressFunc) error {
 	appDir := filepath.Join(config.AppsDir(), appName)
 	m, _ := manifest.ParseFile(filepath.Join(appDir, "selfstack.yml"))
 	if m != nil {
+		report(onProgress, "Stopping container")
 		s.mgr.Down(ctx, appDir, m.Runtime.Entry, appName)
 	}
+	report(onProgress, "Cleaning up")
 	s.store.DeleteApp(appName)
 	s.store.ReleasePort(appName)
 	os.RemoveAll(appDir)
@@ -175,7 +177,7 @@ func (s *Service) Update(ctx context.Context, appName string, onProgress Progres
 
 	// Rebuild and start
 	report(onProgress, "Building container")
-	if err := s.mgr.Build(ctx, appDir, m.Runtime.Entry); err != nil {
+	if err := s.mgr.Build(ctx, appDir, m.Runtime.Entry, appName); err != nil {
 		return fmt.Errorf("build after update: %w", err)
 	}
 	envVars := make(map[string]string)

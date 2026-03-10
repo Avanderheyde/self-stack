@@ -124,8 +124,36 @@ export async function updateApp(name: string, onStep?: (step: string) => void): 
   return readSSEStream(res, onStep);
 }
 
-export async function removeApp(name: string): Promise<void> {
-  await apiFetch(`${API_BASE}/apps/${encodeURIComponent(name)}`, { method: 'DELETE' });
+export async function removeApp(name: string, onStep?: (step: string) => void): Promise<void> {
+  const res = await fetch(`${API_BASE}/apps/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    const msg = body?.error || `Request failed (${res.status})`;
+    toast(msg);
+    throw new Error(msg);
+  }
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let idx: number;
+    while ((idx = buf.indexOf('\n\n')) !== -1) {
+      const raw = buf.slice(0, idx).trim();
+      buf = buf.slice(idx + 2);
+      if (!raw.startsWith('data: ')) continue;
+      try {
+        const evt = JSON.parse(raw.slice(6));
+        if (evt.error) { toast(evt.error); throw new Error(evt.error); }
+        if (evt.step && onStep) onStep(evt.step);
+      } catch (e) {
+        if (e instanceof SyntaxError) continue;
+        throw e;
+      }
+    }
+  }
 }
 
 export async function searchRegistry(query: string): Promise<RegistryApp[]> {
@@ -134,4 +162,18 @@ export async function searchRegistry(query: string): Promise<RegistryApp[]> {
 
 export async function getStatus(): Promise<{ version: string; apps: number; status: string }> {
   return apiFetch(`${API_BASE}/status`);
+}
+
+export interface UpdateCheck {
+  current: string;
+  latest: string;
+  available: boolean;
+}
+
+export async function checkForUpdate(): Promise<UpdateCheck> {
+  return apiFetch(`${API_BASE}/update/check`);
+}
+
+export async function applyUpdate(): Promise<{ updated: boolean; version: string }> {
+  return apiFetch(`${API_BASE}/update/apply`, { method: 'POST' });
 }

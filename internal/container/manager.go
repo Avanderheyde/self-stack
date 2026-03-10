@@ -18,8 +18,8 @@ func NewManager() *Manager {
 	return &Manager{timeout: 5 * time.Minute}
 }
 
-func (m *Manager) Build(ctx context.Context, appDir string, composePath string) error {
-	cmd := exec.CommandContext(ctx, "docker", "compose", "-f", filepath.Join(appDir, composePath), "build", "--no-cache")
+func (m *Manager) Build(ctx context.Context, appDir string, composePath string, appName string) error {
+	cmd := exec.CommandContext(ctx, "docker", "compose", "-f", filepath.Join(appDir, composePath), "-p", "selfstack-"+appName, "build", "--no-cache")
 	cmd.Dir = appDir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -29,7 +29,7 @@ func (m *Manager) Build(ctx context.Context, appDir string, composePath string) 
 }
 
 func (m *Manager) Up(ctx context.Context, appDir, composePath string, appName string, containerPort, hostPort int, envVars map[string]string) error {
-	args := []string{"compose", "-f", filepath.Join(appDir, composePath), "-p", "selfstack-" + appName, "up", "-d"}
+	args := []string{"compose", "-f", filepath.Join(appDir, composePath), "-p", "selfstack-" + appName, "up", "-d", "--force-recreate"}
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	cmd.Dir = appDir
 	env := cmd.Environ()

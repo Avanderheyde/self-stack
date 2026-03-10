@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import type { App } from '../api';
 import StatusBadge from './StatusBadge';
+import { isNewerVersion } from '../version';
 
 function AppIcon({ app, iconUrl }: { app: App; iconUrl?: string }) {
   if (iconUrl) {
@@ -59,7 +60,7 @@ export default function InstalledAppCard({
             <span className="font-semibold text-gray-900">
               {app.DisplayName || app.Name}
             </span>
-            {latestVersion && latestVersion !== app.Version && (
+            {latestVersion && isNewerVersion(latestVersion, app.Version) && (
               <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" title="Update available" />
             )}
           </div>

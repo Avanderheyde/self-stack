@@ -103,11 +103,25 @@ func (s *Server) handleStopApp(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRemoveApp(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	if err := s.appSvc.Remove(r.Context(), name); err != nil {
-		jsonError(w, errStatus(err), err.Error())
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		jsonError(w, 500, "streaming not supported")
 		return
 	}
-	jsonResponse(w, 200, map[string]string{"status": "removed"})
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	onProgress := app.ProgressFunc(func(step string) {
+		sseEvent(w, flusher, map[string]string{"step": step})
+	})
+
+	if err := s.appSvc.Remove(r.Context(), name, onProgress); err != nil {
+		sseEvent(w, flusher, map[string]string{"error": err.Error()})
+		return
+	}
+	sseEvent(w, flusher, map[string]any{"done": true})
 }
 
 func (s *Server) handleUpdateApp(w http.ResponseWriter, r *http.Request) {

@@ -1,20 +1,24 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import { getApp, searchRegistry, startApp, stopApp, removeApp, updateApp, updatePort } from '../api';
 import type { App } from '../api';
 import StatusBadge from '../components/StatusBadge';
+import { isNewerVersion } from '../version';
 
 export default function AppDetailPage() {
   const { name } = useParams<{ name: string }>();
+  const navigate = useNavigate();
   const [app, setApp] = useState<App | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const [iconUrl, setIconUrl] = useState<string | undefined>();
   const [editingPort, setEditingPort] = useState(false);
   const [portValue, setPortValue] = useState('');
   const [latestVersion, setLatestVersion] = useState<string | undefined>();
   const [updating, setUpdating] = useState(false);
   const [updateStep, setUpdateStep] = useState('');
+  const [removeStep, setRemoveStep] = useState('');
 
   const load = useCallback(async () => {
     if (!name) return;
@@ -159,29 +163,56 @@ export default function AppDetailPage() {
           </div>
         </div>
 
-        {latestVersion && latestVersion !== app.Version && (
-          <div className="flex items-center justify-between mt-6 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg">
-            <span className="text-sm text-amber-800">
-              Update available (v{app.Version || '0.0.0'} → v{latestVersion})
-            </span>
-            <button
-              onClick={async () => {
-                if (!name) return;
-                setUpdating(true);
-                setUpdateStep('');
-                try {
-                  await updateApp(name, setUpdateStep);
-                  await load();
-                } finally {
-                  setUpdating(false);
-                  setUpdateStep('');
-                }
-              }}
-              disabled={updating || busy}
-              className="text-sm px-4 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 transition-colors"
-            >
-              {updating ? (updateStep || 'Updating...') : 'Update'}
-            </button>
+        {latestVersion && isNewerVersion(latestVersion, app.Version) && (
+          <div className="mt-6 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-amber-800">
+                Update available (v{app.Version || '0.0.0'} → v{latestVersion})
+              </span>
+              {!updating && (
+                <button
+                  onClick={async () => {
+                    if (!name) return;
+                    setUpdating(true);
+                    setUpdateStep('');
+                    try {
+                      await updateApp(name, setUpdateStep);
+                      await load();
+                    } finally {
+                      setUpdating(false);
+                      setUpdateStep('');
+                    }
+                  }}
+                  disabled={busy}
+                  className="text-sm px-4 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 transition-colors"
+                >
+                  Update
+                </button>
+              )}
+            </div>
+            {updating && (() => {
+              const steps = ['Stopping app', 'Pulling updates', 'Building container', 'Starting app'];
+              const currentIdx = updateStep ? steps.findIndex((s) => s === updateStep) : -1;
+              const progress = currentIdx >= 0 ? ((currentIdx + 1) / steps.length) * 100 : 5;
+              return (
+                <div className="mt-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-medium text-amber-700">
+                      {updateStep || 'Preparing...'}
+                    </span>
+                    <span className="text-xs text-amber-600">
+                      {currentIdx >= 0 ? `${currentIdx + 1}/${steps.length}` : ''}
+                    </span>
+                  </div>
+                  <div className="w-full h-2 bg-amber-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-amber-500 rounded-full transition-all duration-500 ease-out"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -215,15 +246,48 @@ export default function AppDetailPage() {
             </button>
           )}
           <button
-            onClick={() => {
-              if (confirm(`Remove ${app.DisplayName || app.Name}?`)) run(removeApp);
+            onClick={async () => {
+              if (!name || !confirm(`Remove ${app.DisplayName || app.Name}?`)) return;
+              setRemoving(true);
+              setRemoveStep('');
+              try {
+                await removeApp(name, setRemoveStep);
+                navigate('/my-apps');
+              } catch {
+                setRemoving(false);
+                setRemoveStep('');
+              }
             }}
-            disabled={busy}
+            disabled={busy || removing}
             className="text-sm px-4 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors"
           >
-            Remove
+            {removing ? 'Removing...' : 'Remove'}
           </button>
         </div>
+
+        {removing && (() => {
+          const steps = ['Stopping container', 'Cleaning up'];
+          const currentIdx = removeStep ? steps.findIndex((s) => s === removeStep) : -1;
+          const progress = currentIdx >= 0 ? ((currentIdx + 1) / steps.length) * 100 : 5;
+          return (
+            <div className="mt-4">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-medium text-red-700">
+                  {removeStep || 'Preparing...'}
+                </span>
+                <span className="text-xs text-red-500">
+                  {currentIdx >= 0 ? `${currentIdx + 1}/${steps.length}` : ''}
+                </span>
+              </div>
+              <div className="w-full h-2 bg-red-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-red-500 rounded-full transition-all duration-500 ease-out"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {app.Description && (
