@@ -97,6 +97,36 @@ export async function installApp(name: string, onStep?: (step: string) => void):
   return readSSEStream(res, onStep);
 }
 
+export function streamLogs(
+  name: string,
+  onLine: (line: string) => void,
+  signal: AbortSignal,
+): void {
+  fetch(`${API_BASE}/apps/${encodeURIComponent(name)}/logs`, { signal })
+    .then(async (res) => {
+      if (!res.ok) return;
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let idx: number;
+        while ((idx = buf.indexOf('\n\n')) !== -1) {
+          const raw = buf.slice(0, idx).trim();
+          buf = buf.slice(idx + 2);
+          if (!raw.startsWith('data: ')) continue;
+          try {
+            const evt = JSON.parse(raw.slice(6));
+            if (evt.line != null) onLine(evt.line);
+          } catch { /* ignore */ }
+        }
+      }
+    })
+    .catch(() => { /* aborted or network error */ });
+}
+
 export async function startApp(name: string): Promise<void> {
   await apiFetch(`${API_BASE}/apps/${encodeURIComponent(name)}/start`, { method: 'POST' });
 }
@@ -176,4 +206,13 @@ export async function checkForUpdate(): Promise<UpdateCheck> {
 
 export async function applyUpdate(): Promise<{ updated: boolean; version: string }> {
   return apiFetch(`${API_BASE}/update/apply`, { method: 'POST' });
+}
+
+export interface PortlessStatus {
+  available: boolean;
+  port: number;
+}
+
+export async function getPortlessStatus(): Promise<PortlessStatus> {
+  return apiFetch(`${API_BASE}/portless`);
 }

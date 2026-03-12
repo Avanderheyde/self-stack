@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { getApp, searchRegistry, startApp, stopApp, removeApp, updateApp, updatePort } from '../api';
+import { getApp, searchRegistry, startApp, stopApp, removeApp, updateApp, updatePort, streamLogs } from '../api';
 import type { App } from '../api';
 import StatusBadge from '../components/StatusBadge';
+import { useAppUrl } from '../portless';
 import { isNewerVersion } from '../version';
 
 export default function AppDetailPage() {
@@ -19,6 +20,7 @@ export default function AppDetailPage() {
   const [updating, setUpdating] = useState(false);
   const [updateStep, setUpdateStep] = useState('');
   const [removeStep, setRemoveStep] = useState('');
+  const appUrl = useAppUrl(app?.Name ?? '', app?.HostPort ?? 0);
 
   const load = useCallback(async () => {
     if (!name) return;
@@ -99,12 +101,12 @@ export default function AppDetailPage() {
               <StatusBadge status={app.Status} />
               {app.Status === 'running' && app.HostPort > 0 && (
                 <a
-                  href={`http://localhost:${app.HostPort}`}
+                  href={appUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-sm text-blue-600 hover:text-blue-800 transition-colors"
                 >
-                  localhost:{app.HostPort}
+                  {appUrl.replace('http://', '')}
                 </a>
               )}
               {app.Status === 'stopped' && app.HostPort > 0 && !editingPort && (
@@ -220,7 +222,7 @@ export default function AppDetailPage() {
           {app.Status === 'running' && (
             <>
               <a
-                href={`http://localhost:${app.HostPort}`}
+                href={appUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
@@ -302,10 +304,72 @@ export default function AppDetailPage() {
         <p className="text-sm text-gray-400">Configuration options will appear here in a future update.</p>
       </div>
 
-      <div className="mt-6 border border-gray-200 rounded-xl p-6">
-        <h2 className="text-sm font-semibold text-gray-900 mb-2">Logs</h2>
-        <p className="text-sm text-gray-400">Container logs will appear here in a future update.</p>
+      <LogViewer appName={name!} appStatus={app.Status} />
+    </div>
+  );
+}
+
+function LogViewer({ appName, appStatus }: { appName: string; appStatus: string }) {
+  const [lines, setLines] = useState<string[]>([]);
+  const [streaming, setStreaming] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  const start = useCallback(() => {
+    if (abortRef.current) abortRef.current.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    setLines([]);
+    setStreaming(true);
+    streamLogs(appName, (line) => {
+      setLines((prev) => {
+        const next = [...prev, line];
+        return next.length > 500 ? next.slice(-500) : next;
+      });
+    }, ac.signal);
+    ac.signal.addEventListener('abort', () => setStreaming(false));
+  }, [appName]);
+
+  const stop = () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+  };
+
+  useEffect(() => () => stop(), []);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [lines]);
+
+  return (
+    <div className="mt-6 border border-gray-200 rounded-xl p-6">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold text-gray-900">Logs</h2>
+        {appStatus === 'running' && (
+          <button
+            onClick={streaming ? stop : start}
+            className="text-xs px-3 py-1 rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+          >
+            {streaming ? 'Stop' : 'Stream Logs'}
+          </button>
+        )}
       </div>
+      {lines.length === 0 && !streaming && (
+        <p className="text-sm text-gray-400">
+          {appStatus === 'running' ? 'Click "Stream Logs" to view container output.' : 'Start the app to view logs.'}
+        </p>
+      )}
+      {(lines.length > 0 || streaming) && (
+        <div className="bg-gray-950 text-gray-300 rounded-lg p-4 font-mono text-xs max-h-80 overflow-y-auto">
+          {lines.map((line, i) => (
+            <div key={i} className="whitespace-pre-wrap break-all leading-5">{line}</div>
+          ))}
+          {streaming && lines.length === 0 && (
+            <span className="text-gray-500">Waiting for logs...</span>
+          )}
+          <div ref={bottomRef} />
+        </div>
+      )}
     </div>
   );
 }

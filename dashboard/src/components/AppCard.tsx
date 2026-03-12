@@ -79,10 +79,33 @@ export default function AppCard({
             disabled={installing}
             className="text-sm font-medium px-4 py-1.5 rounded-lg bg-gray-900 text-white hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {installing ? (progressStep || 'Installing...') : 'Install'}
+            {installing ? 'Installing...' : 'Install'}
           </button>
         )}
       </div>
+      {installing && (() => {
+        const steps = ['Fetching app info', 'Cloning repository', 'Building container', 'Starting app'];
+        const currentIdx = progressStep ? steps.findIndex((s) => s === progressStep) : -1;
+        const progress = currentIdx >= 0 ? ((currentIdx + 1) / steps.length) * 100 : 5;
+        return (
+          <div className="mt-3">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs font-medium text-gray-600">
+                {progressStep || 'Preparing...'}
+              </span>
+              <span className="text-xs text-gray-400">
+                {currentIdx >= 0 ? `${currentIdx + 1}/${steps.length}` : ''}
+              </span>
+            </div>
+            <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gray-900 rounded-full transition-all duration-500 ease-out"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import type { App } from '../api';
 import StatusBadge from './StatusBadge';
+import { useAppUrl } from '../portless';
 import { isNewerVersion } from '../version';
 
 function AppIcon({ app, iconUrl }: { app: App; iconUrl?: string }) {
@@ -42,6 +43,7 @@ export default function InstalledAppCard({
   onRemove: (name: string) => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
+  const appUrl = useAppUrl(app.Name, app.HostPort);
 
   const run = async (fn: (name: string) => Promise<void>) => {
     setBusy(true);
@@ -72,7 +74,7 @@ export default function InstalledAppCard({
           <StatusBadge status={app.Status} />
           {app.Status === 'running' && app.HostPort > 0 && (
             <span className="text-xs text-blue-600">
-              :{app.HostPort}
+              {appUrl.replace('http://', '')}
             </span>
           )}
         </div>
@@ -80,7 +82,7 @@ export default function InstalledAppCard({
           {app.Status === 'running' && (
             <>
               <a
-                href={`http://localhost:${app.HostPort}`}
+                href={appUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}

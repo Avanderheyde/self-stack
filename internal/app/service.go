@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"github.com/selfstack/selfstack/internal/config"
 	"github.com/selfstack/selfstack/internal/container"
 	"github.com/selfstack/selfstack/internal/manifest"
+	"github.com/selfstack/selfstack/internal/portless"
 	"github.com/selfstack/selfstack/internal/registry"
 	"github.com/selfstack/selfstack/internal/store"
 )
@@ -85,12 +87,20 @@ func (s *Service) Install(ctx context.Context, appName string, onProgress Progre
 		cleanup()
 		return err
 	}
+	if m.Expose.Health != "" {
+		report(onProgress, "Waiting for health check")
+		if err := s.mgr.HealthCheck(ctx, port, m.Expose.Health); err != nil {
+			cleanup()
+			return fmt.Errorf("health check: %w", err)
+		}
+	}
 	if err := s.store.InsertApp(store.App{
 		Name: appName, DisplayName: m.DisplayName, Description: m.Description,
 		RepoURL: entry.Repo, Version: m.Version, HostPort: port, Status: "running",
 	}); err != nil {
 		return err
 	}
+	portless.Alias(appName, port)
 	return nil
 }
 
@@ -107,6 +117,7 @@ func (s *Service) Start(ctx context.Context, appName string) error {
 	if err := s.mgr.Start(ctx, appDir, m.Runtime.Entry, appName); err != nil {
 		return err
 	}
+	portless.Alias(appName, app.HostPort)
 	return s.store.UpdateAppStatus(app.Name, "running")
 }
 
@@ -123,6 +134,7 @@ func (s *Service) Stop(ctx context.Context, appName string) error {
 	if err := s.mgr.Stop(ctx, appDir, m.Runtime.Entry, appName); err != nil {
 		return err
 	}
+	portless.Unalias(appName)
 	return s.store.UpdateAppStatus(app.Name, "stopped")
 }
 
@@ -134,6 +146,7 @@ func (s *Service) Remove(ctx context.Context, appName string, onProgress Progres
 		s.mgr.Down(ctx, appDir, m.Runtime.Entry, appName)
 	}
 	report(onProgress, "Cleaning up")
+	portless.Unalias(appName)
 	s.store.DeleteApp(appName)
 	s.store.ReleasePort(appName)
 	os.RemoveAll(appDir)
@@ -188,11 +201,18 @@ func (s *Service) Update(ctx context.Context, appName string, onProgress Progres
 	if err := s.mgr.Up(ctx, appDir, m.Runtime.Entry, appName, m.Expose.Port, app.HostPort, envVars); err != nil {
 		return fmt.Errorf("start after update: %w", err)
 	}
+	if m.Expose.Health != "" {
+		report(onProgress, "Waiting for health check")
+		if err := s.mgr.HealthCheck(ctx, app.HostPort, m.Expose.Health); err != nil {
+			return fmt.Errorf("health check after update: %w", err)
+		}
+	}
 
 	// Update metadata from new manifest
 	if err := s.store.UpdateAppMeta(appName, m.DisplayName, m.Description, m.Version); err != nil {
 		return err
 	}
+	portless.Alias(appName, app.HostPort)
 	return s.store.UpdateAppStatus(appName, "running")
 }
 
@@ -205,6 +225,19 @@ func (s *Service) UpdatePort(appName string, port int) error {
 		return fmt.Errorf("app must be stopped to change port")
 	}
 	return s.store.UpdatePort(appName, port)
+}
+
+func (s *Service) Logs(ctx context.Context, appName string, w io.Writer) error {
+	_, err := s.store.GetApp(appName)
+	if err != nil {
+		return err
+	}
+	appDir := filepath.Join(config.AppsDir(), appName)
+	m, err := manifest.ParseFile(filepath.Join(appDir, "selfstack.yml"))
+	if err != nil {
+		return err
+	}
+	return s.mgr.Logs(ctx, appDir, m.Runtime.Entry, appName, w)
 }
 
 func (s *Service) List() ([]store.App, error) { return s.store.ListApps() }

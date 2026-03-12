@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/selfstack/selfstack/internal/app"
 	"github.com/selfstack/selfstack/internal/dashboard"
+	"github.com/selfstack/selfstack/internal/portless"
 	"github.com/selfstack/selfstack/internal/registry"
 )
 
@@ -37,9 +38,11 @@ func NewServer(appSvc *app.Service, reg *registry.Client, version string) *Serve
 		r.Patch("/apps/{name}/port", s.handleUpdatePort)
 		r.Post("/apps/{name}/update", s.handleUpdateApp)
 		r.Delete("/apps/{name}", s.handleRemoveApp)
+		r.Get("/apps/{name}/logs", s.handleLogs)
 		r.Get("/registry/search", s.handleRegistrySearch)
 		r.Get("/update/check", s.handleUpdateCheck)
 		r.Post("/update/apply", s.handleUpdateApply)
+		r.Get("/portless", handlePortlessStatus)
 	})
 
 	r.Handle("/*", dashboard.Handler())
@@ -68,6 +71,18 @@ func sseEvent(w http.ResponseWriter, flusher http.Flusher, data any) {
 	buf, _ := json.Marshal(data)
 	fmt.Fprintf(w, "data: %s\n\n", buf)
 	flusher.Flush()
+}
+
+func handlePortlessStatus(w http.ResponseWriter, r *http.Request) {
+	available := portless.Available()
+	port := 0
+	if available {
+		port = portless.ProxyPort()
+	}
+	jsonResponse(w, 200, map[string]any{
+		"available": available,
+		"port":      port,
+	})
 }
 
 func errStatus(err error) int {

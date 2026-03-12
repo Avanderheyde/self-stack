@@ -1,7 +1,9 @@
 package api
 
 import (
+	"bufio"
 	"encoding/json"
+	"io"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -166,6 +168,30 @@ func (s *Server) handleUpdatePort(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonResponse(w, 200, map[string]string{"status": "updated"})
+}
+
+func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		jsonError(w, 500, "streaming not supported")
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	pr, pw := io.Pipe()
+	go func() {
+		defer pw.Close()
+		s.appSvc.Logs(r.Context(), name, pw)
+	}()
+
+	scanner := bufio.NewScanner(pr)
+	for scanner.Scan() {
+		sseEvent(w, flusher, map[string]string{"line": scanner.Text()})
+	}
 }
 
 func (s *Server) handleRegistrySearch(w http.ResponseWriter, r *http.Request) {
