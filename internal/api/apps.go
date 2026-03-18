@@ -2,9 +2,11 @@ package api
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/selfstack/selfstack/internal/app"
@@ -129,6 +131,36 @@ func (s *Server) handleRemoveApp(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleUpdateApp(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 
+	s.opsMu.Lock()
+	if existing, ok := s.ops[name]; ok && !existing.Done {
+		s.opsMu.Unlock()
+		jsonResponse(w, 200, map[string]any{"active": true, "step": existing.Step})
+		return
+	}
+	op := &activeOp{Type: "update"}
+	s.ops[name] = op
+	s.opsMu.Unlock()
+
+	// Run update in background so it survives client disconnect
+	go func() {
+		onProgress := app.ProgressFunc(func(step string) {
+			s.opsMu.Lock()
+			op.Step = step
+			s.opsMu.Unlock()
+		})
+		if err := s.appSvc.Update(context.Background(), name, onProgress); err != nil {
+			s.opsMu.Lock()
+			op.Err = err.Error()
+			op.Done = true
+			s.opsMu.Unlock()
+			return
+		}
+		s.opsMu.Lock()
+		op.Done = true
+		s.opsMu.Unlock()
+	}()
+
+	// Stream SSE to this caller by polling the operation state
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		jsonError(w, 500, "streaming not supported")
@@ -138,20 +170,68 @@ func (s *Server) handleUpdateApp(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	onProgress := app.ProgressFunc(func(step string) {
-		sseEvent(w, flusher, map[string]string{"step": step})
-	})
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	lastStep := ""
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+			s.opsMu.Lock()
+			step := op.Step
+			done := op.Done
+			errMsg := op.Err
+			s.opsMu.Unlock()
 
-	if err := s.appSvc.Update(r.Context(), name, onProgress); err != nil {
-		sseEvent(w, flusher, map[string]string{"error": err.Error()})
+			if step != lastStep {
+				sseEvent(w, flusher, map[string]string{"step": step})
+				lastStep = step
+			}
+			if done {
+				if errMsg != "" {
+					sseEvent(w, flusher, map[string]string{"error": errMsg})
+				} else {
+					updated, err := s.appSvc.Get(name)
+					if err != nil {
+						sseEvent(w, flusher, map[string]string{"error": err.Error()})
+					} else {
+						sseEvent(w, flusher, map[string]any{"done": true, "app": updated})
+					}
+				}
+				return
+			}
+		}
+	}
+}
+
+func (s *Server) handleGetOperation(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	s.opsMu.Lock()
+	op := s.ops[name]
+	if op == nil {
+		s.opsMu.Unlock()
+		jsonResponse(w, 200, map[string]any{"active": false})
 		return
 	}
-	updated, err := s.appSvc.Get(name)
-	if err != nil {
-		sseEvent(w, flusher, map[string]string{"error": err.Error()})
-		return
+	resp := map[string]any{
+		"active": !op.Done,
+		"type":   op.Type,
+		"step":   op.Step,
+		"done":   op.Done,
 	}
-	sseEvent(w, flusher, map[string]any{"done": true, "app": updated})
+	if op.Err != "" {
+		resp["error"] = op.Err
+	}
+	done := op.Done
+	s.opsMu.Unlock()
+	// Clean up completed operations after returning
+	if done {
+		s.opsMu.Lock()
+		delete(s.ops, name)
+		s.opsMu.Unlock()
+	}
+	jsonResponse(w, 200, resp)
 }
 
 func (s *Server) handleUpdatePort(w http.ResponseWriter, r *http.Request) {

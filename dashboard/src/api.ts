@@ -201,11 +201,25 @@ export interface UpdateCheck {
 }
 
 export async function checkForUpdate(): Promise<UpdateCheck> {
-  return apiFetch(`${API_BASE}/update/check`);
+  const res = await fetch(`${API_BASE}/update/check`);
+  if (!res.ok) throw new Error('update check failed');
+  return res.json();
 }
 
 export async function applyUpdate(): Promise<{ updated: boolean; version: string }> {
   return apiFetch(`${API_BASE}/update/apply`, { method: 'POST' });
+}
+
+export interface AppOperation {
+  active: boolean;
+  type: string;
+  step: string;
+  done: boolean;
+  error?: string;
+}
+
+export async function getOperation(name: string): Promise<AppOperation> {
+  return apiFetch(`${API_BASE}/apps/${encodeURIComponent(name)}/operation`);
 }
 
 export interface PortlessStatus {

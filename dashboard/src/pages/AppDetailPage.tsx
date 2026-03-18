@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { getApp, searchRegistry, startApp, stopApp, removeApp, updateApp, updatePort, streamLogs } from '../api';
+import { getApp, getOperation, searchRegistry, startApp, stopApp, removeApp, updateApp, updatePort, streamLogs } from '../api';
 import type { App } from '../api';
 import StatusBadge from '../components/StatusBadge';
 import { useAppUrl } from '../portless';
@@ -43,6 +43,31 @@ export default function AppDetailPage() {
   }, [name]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Poll for active background operations (e.g. update started before navigating away)
+  useEffect(() => {
+    if (!name || loading) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const op = await getOperation(name);
+        if (cancelled) return;
+        if (op.active && op.type === 'update') {
+          setUpdating(true);
+          setUpdateStep(op.step);
+          // Keep polling
+          setTimeout(poll, 1000);
+        } else if (op.done && op.type === 'update') {
+          // Operation just finished
+          setUpdating(false);
+          setUpdateStep('');
+          load();
+        }
+      } catch { /* ignore */ }
+    };
+    poll();
+    return () => { cancelled = true; };
+  }, [name, loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const run = async (fn: (n: string) => Promise<void>) => {
     if (!name) return;
@@ -179,11 +204,25 @@ export default function AppDetailPage() {
                     setUpdateStep('');
                     try {
                       await updateApp(name, setUpdateStep);
-                      await load();
-                    } finally {
-                      setUpdating(false);
-                      setUpdateStep('');
-                    }
+                    } catch { /* SSE may disconnect on navigate, that's ok */ }
+                    // Poll for completion
+                    const pollDone = async () => {
+                      try {
+                        const op = await getOperation(name);
+                        if (op.active) {
+                          setUpdateStep(op.step);
+                          setTimeout(pollDone, 1000);
+                        } else {
+                          setUpdating(false);
+                          setUpdateStep('');
+                          await load();
+                        }
+                      } catch {
+                        setUpdating(false);
+                        setUpdateStep('');
+                      }
+                    };
+                    pollDone();
                   }}
                   disabled={busy}
                   className="text-sm px-4 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 transition-colors"
@@ -218,7 +257,7 @@ export default function AppDetailPage() {
           </div>
         )}
 
-        <div className="flex gap-2 mt-6">
+        {!updating && !removing && <div className="flex gap-2 mt-6">
           {app.Status === 'running' && (
             <>
               <a
@@ -265,7 +304,7 @@ export default function AppDetailPage() {
           >
             {removing ? 'Removing...' : 'Remove'}
           </button>
-        </div>
+        </div>}
 
         {removing && (() => {
           const steps = ['Stopping container', 'Cleaning up'];

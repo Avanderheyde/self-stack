@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -15,15 +16,24 @@ import (
 	"github.com/selfstack/selfstack/internal/registry"
 )
 
+type activeOp struct {
+	Type string `json:"type"`
+	Step string `json:"step"`
+	Done bool   `json:"done"`
+	Err  string `json:"error,omitempty"`
+}
+
 type Server struct {
 	appSvc   *app.Service
 	registry *registry.Client
 	version  string
 	router   chi.Router
+	ops      map[string]*activeOp
+	opsMu    sync.Mutex
 }
 
 func NewServer(appSvc *app.Service, reg *registry.Client, version string) *Server {
-	s := &Server{appSvc: appSvc, registry: reg, version: version}
+	s := &Server{appSvc: appSvc, registry: reg, version: version, ops: make(map[string]*activeOp)}
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -37,6 +47,7 @@ func NewServer(appSvc *app.Service, reg *registry.Client, version string) *Serve
 		r.Get("/apps/{name}", s.handleGetApp)
 		r.Patch("/apps/{name}/port", s.handleUpdatePort)
 		r.Post("/apps/{name}/update", s.handleUpdateApp)
+		r.Get("/apps/{name}/operation", s.handleGetOperation)
 		r.Delete("/apps/{name}", s.handleRemoveApp)
 		r.Get("/apps/{name}/logs", s.handleLogs)
 		r.Get("/registry/search", s.handleRegistrySearch)

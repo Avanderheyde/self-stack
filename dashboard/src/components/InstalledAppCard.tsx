@@ -72,11 +72,6 @@ export default function InstalledAppCard({
       <div className="flex items-center justify-between mt-4">
         <div className="flex items-center gap-3">
           <StatusBadge status={app.Status} />
-          {app.Status === 'running' && app.HostPort > 0 && (
-            <span className="text-xs text-blue-600">
-              {appUrl.replace('http://', '')}
-            </span>
-          )}
         </div>
         <div className="flex gap-2" onClick={(e) => e.preventDefault()}>
           {app.Status === 'running' && (

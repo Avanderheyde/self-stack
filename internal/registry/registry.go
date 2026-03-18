@@ -25,9 +25,10 @@ type Catalog struct {
 }
 
 type Client struct {
-	url    string
-	client *http.Client
-	cache  *Catalog
+	url     string
+	client  *http.Client
+	cache   *Catalog
+	fetched time.Time
 }
 
 func NewClient(url string) *Client {
@@ -51,10 +52,18 @@ func (c *Client) Fetch() (*Catalog, error) {
 		return nil, fmt.Errorf("decode registry: %w", err)
 	}
 	c.cache = &cat
+	c.fetched = time.Now()
 	return &cat, nil
 }
 
-func (c *Client) Cached() *Catalog { return c.cache }
+const cacheTTL = 5 * time.Minute
+
+func (c *Client) Cached() *Catalog {
+	if c.cache != nil && time.Since(c.fetched) > cacheTTL {
+		return nil
+	}
+	return c.cache
+}
 
 func (c *Client) Lookup(name string) (*AppEntry, error) {
 	cat := c.cache
