@@ -11,7 +11,7 @@ export default function SearchBar({ onSearch }: { onSearch: (q: string) => void 
   return (
     <div className="relative">
       <svg
-        className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400"
+        className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-text-muted)]"
         fill="none"
         stroke="currentColor"
         viewBox="0 0 24 24"
@@ -28,7 +28,7 @@ export default function SearchBar({ onSearch }: { onSearch: (q: string) => void 
         placeholder="Search apps..."
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-200 focus:border-gray-300 transition-colors"
+        className="w-full pl-10 pr-4 py-3 bg-white border border-[var(--color-border)] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-[var(--color-accent)] transition-all duration-150 placeholder:text-[var(--color-text-muted)]"
       />
     </div>
   );

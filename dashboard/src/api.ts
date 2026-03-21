@@ -23,12 +23,13 @@ export interface RegistryApp {
   version: string;
 }
 
-async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
+async function apiFetch<T>(url: string, init?: RequestInit & { silent?: boolean }): Promise<T> {
+  const { silent, ...fetchInit } = init ?? {};
+  const res = await fetch(url, fetchInit);
   if (!res.ok) {
     const body = await res.json().catch(() => null);
     const msg = body?.error || `Request failed (${res.status})`;
-    toast(msg);
+    if (!silent) toast(msg);
     throw new Error(msg);
   }
   return res.json();
@@ -201,9 +202,7 @@ export interface UpdateCheck {
 }
 
 export async function checkForUpdate(): Promise<UpdateCheck> {
-  const res = await fetch(`${API_BASE}/update/check`);
-  if (!res.ok) throw new Error('update check failed');
-  return res.json();
+  return apiFetch(`${API_BASE}/update/check`, { silent: true });
 }
 
 export async function applyUpdate(): Promise<{ updated: boolean; version: string }> {
@@ -228,5 +227,5 @@ export interface PortlessStatus {
 }
 
 export async function getPortlessStatus(): Promise<PortlessStatus> {
-  return apiFetch(`${API_BASE}/portless`);
+  return apiFetch(`${API_BASE}/portless`, { silent: true });
 }

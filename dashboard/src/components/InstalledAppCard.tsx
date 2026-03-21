@@ -11,17 +11,23 @@ function AppIcon({ app, iconUrl }: { app: App; iconUrl?: string }) {
       <img
         src={iconUrl}
         alt={app.DisplayName || app.Name}
-        className="w-12 h-12 rounded-xl object-cover"
+        className="w-14 h-14 rounded-2xl object-cover shadow-sm"
       />
     );
   }
-  const colors = [
-    'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500',
-    'bg-pink-500', 'bg-teal-500', 'bg-indigo-500', 'bg-red-500',
+  const gradients = [
+    'from-blue-500 to-blue-600',
+    'from-emerald-500 to-emerald-600',
+    'from-violet-500 to-violet-600',
+    'from-orange-500 to-orange-600',
+    'from-pink-500 to-pink-600',
+    'from-teal-500 to-teal-600',
+    'from-indigo-500 to-indigo-600',
+    'from-rose-500 to-rose-600',
   ];
-  const idx = app.Name.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % colors.length;
+  const idx = app.Name.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % gradients.length;
   return (
-    <div className={`w-12 h-12 rounded-xl ${colors[idx]} flex items-center justify-center text-white font-bold text-lg`}>
+    <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${gradients[idx]} flex items-center justify-center text-white font-bold text-xl shadow-sm`}>
       {(app.DisplayName || app.Name).charAt(0).toUpperCase()}
     </div>
   );
@@ -53,25 +59,30 @@ export default function InstalledAppCard({
   return (
     <Link
       to={`/apps/${app.Name}`}
-      className="block border border-gray-200 rounded-xl p-5 hover:shadow-md transition-shadow"
+      className="block bg-white rounded-2xl p-5 border border-[var(--color-border)] hover:border-gray-300 hover:shadow-lg hover:shadow-gray-100 transition-all duration-200"
     >
       <div className="flex items-start gap-4">
-        <AppIcon app={app} iconUrl={iconUrl} />
+        <div className="relative">
+          <AppIcon app={app} iconUrl={iconUrl} />
+          {latestVersion && isNewerVersion(latestVersion, app.Version) && (
+            <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-amber-400 border-2 border-white" title="Update available" />
+          )}
+        </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-gray-900">
-              {app.DisplayName || app.Name}
-            </span>
-            {latestVersion && isNewerVersion(latestVersion, app.Version) && (
-              <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" title="Update available" />
-            )}
-          </div>
-          <p className="text-sm text-gray-500 mt-1 line-clamp-2">{app.Description}</p>
+          <span className="font-semibold text-[var(--color-text-primary)] text-[15px]">
+            {app.DisplayName || app.Name}
+          </span>
+          <p className="text-sm text-[var(--color-text-secondary)] mt-1 line-clamp-2 leading-relaxed">{app.Description}</p>
         </div>
       </div>
-      <div className="flex items-center justify-between mt-4">
+      <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
         <div className="flex items-center gap-3">
           <StatusBadge status={app.Status} />
+          {app.Status === 'running' && app.HostPort > 0 && (
+            <span className="text-xs text-[var(--color-accent)] font-medium truncate max-w-[140px]">
+              {appUrl.replace('http://', '')}
+            </span>
+          )}
         </div>
         <div className="flex gap-2" onClick={(e) => e.preventDefault()}>
           {app.Status === 'running' && (
@@ -81,14 +92,14 @@ export default function InstalledAppCard({
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
-                className="text-xs px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
+                className="text-xs font-medium px-3.5 py-2 rounded-xl bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] active:scale-95 transition-all duration-150 shadow-sm shadow-indigo-200"
               >
                 Open
               </a>
               <button
                 onClick={(e) => { e.stopPropagation(); run(onStop); }}
                 disabled={busy}
-                className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50 transition-colors"
+                className="text-xs font-medium px-3.5 py-2 rounded-xl bg-gray-100 text-[var(--color-text-secondary)] hover:bg-gray-200 disabled:opacity-50 active:scale-95 transition-all duration-150"
               >
                 Stop
               </button>
@@ -98,7 +109,7 @@ export default function InstalledAppCard({
             <button
               onClick={(e) => { e.stopPropagation(); run(onStart); }}
               disabled={busy}
-              className="text-xs px-3 py-1.5 rounded-lg bg-gray-900 text-white hover:bg-gray-700 disabled:opacity-50 transition-colors"
+              className="text-xs font-medium px-3.5 py-2 rounded-xl bg-[var(--color-text-primary)] text-white hover:bg-gray-700 disabled:opacity-50 active:scale-95 transition-all duration-150"
             >
               Start
             </button>
@@ -109,7 +120,7 @@ export default function InstalledAppCard({
               if (confirm(`Remove ${app.DisplayName || app.Name}?`)) run(onRemove);
             }}
             disabled={busy}
-            className="text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors"
+            className="text-xs font-medium px-3.5 py-2 rounded-xl text-red-500 hover:bg-red-50 disabled:opacity-50 active:scale-95 transition-all duration-150"
           >
             Remove
           </button>

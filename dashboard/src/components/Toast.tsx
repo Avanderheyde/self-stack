@@ -28,14 +28,14 @@ export default function ToastContainer() {
   if (toasts.length === 0) return null;
 
   return (
-    <div className="fixed bottom-6 right-6 flex flex-col gap-2 z-50">
+    <div className="fixed bottom-20 sm:bottom-6 left-4 right-4 sm:left-auto sm:right-6 sm:w-auto flex flex-col gap-2 z-[60]">
       {toasts.map((t) => (
         <div
           key={t.id}
-          className={`px-4 py-3 rounded-xl shadow-lg text-sm font-medium animate-fade-in ${
+          className={`px-4 py-3 rounded-2xl shadow-lg text-sm font-medium animate-slide-up backdrop-blur-sm ${
             t.type === 'error'
-              ? 'bg-red-600 text-white'
-              : 'bg-green-600 text-white'
+              ? 'bg-red-500/95 text-white'
+              : 'bg-emerald-500/95 text-white'
           }`}
         >
           {t.text}
