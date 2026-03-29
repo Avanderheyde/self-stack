@@ -3,7 +3,10 @@ package cloud
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud"
@@ -18,7 +21,7 @@ type ServerConfig struct {
 
 func DefaultServerConfig() ServerConfig {
 	return ServerConfig{
-		ServerType: "cx22",
+		ServerType: "cax11",
 		Image:      "ubuntu-24.04",
 		Location:   "fsn1",
 	}
@@ -216,6 +219,54 @@ systemctl start selfstack
 touch /root/.selfstack-setup-done
 `
 	return script
+}
+
+// EnsureSSHKey checks for a local SSH public key and uploads it to Hetzner if
+// no keys exist there. Returns the list of SSH key IDs to use.
+func EnsureSSHKey(ctx context.Context, token string) ([]int64, error) {
+	// Check existing keys on Hetzner
+	keys, err := ListSSHKeys(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+	if len(keys) > 0 {
+		ids := make([]int64, len(keys))
+		for i, k := range keys {
+			ids[i] = k.ID
+		}
+		return ids, nil
+	}
+
+	// Look for a local SSH public key
+	home, _ := os.UserHomeDir()
+	candidates := []string{"id_ed25519.pub", "id_rsa.pub", "id_ecdsa.pub"}
+	var pubKeyPath string
+	for _, c := range candidates {
+		p := filepath.Join(home, ".ssh", c)
+		if _, err := os.Stat(p); err == nil {
+			pubKeyPath = p
+			break
+		}
+	}
+	if pubKeyPath == "" {
+		return nil, nil // no local key found, will use root password
+	}
+
+	pubKey, err := os.ReadFile(pubKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("read SSH key: %w", err)
+	}
+
+	client := hcloud.NewClient(hcloud.WithToken(token))
+	key, _, err := client.SSHKey.Create(ctx, hcloud.SSHKeyCreateOpts{
+		Name:      "selfstack-auto",
+		PublicKey: strings.TrimSpace(string(pubKey)),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("upload SSH key: %w", err)
+	}
+
+	return []int64{key.ID}, nil
 }
 
 // ServerID helper for config persistence

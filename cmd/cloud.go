@@ -55,25 +55,17 @@ var cloudSetupCmd = &cobra.Command{
 			fmt.Println("Using saved Hetzner API token")
 		}
 
-		// Check for SSH keys on Hetzner
+		// Ensure SSH keys are on Hetzner (auto-uploads local key if needed)
 		fmt.Println("\nChecking SSH keys...")
-		keys, err := cloud.ListSSHKeys(ctx, token)
+		sshKeyIDs, err := cloud.EnsureSSHKey(ctx, token)
 		if err != nil {
-			return fmt.Errorf("list SSH keys: %w\nCheck that your API token is valid", err)
-		}
-
-		var sshKeyIDs []int64
-		if len(keys) == 0 {
-			fmt.Println("  No SSH keys found on Hetzner.")
-			fmt.Println("  The server will be created with a root password (shown once).")
-			fmt.Println("  Recommended: add an SSH key at https://console.hetzner.cloud → SSH Keys")
+			fmt.Printf("  ⚠ SSH key issue: %v\n", err)
+			fmt.Println("  Continuing without SSH key — root password will be shown")
+		} else if len(sshKeyIDs) > 0 {
+			fmt.Printf("  ✓ SSH key configured (%d key(s))\n", len(sshKeyIDs))
 		} else {
-			fmt.Printf("  Found %d SSH key(s):\n", len(keys))
-			for _, k := range keys {
-				fmt.Printf("    - %s (%s)\n", k.Name, k.Fingerprint)
-				sshKeyIDs = append(sshKeyIDs, k.ID)
-			}
-			fmt.Println("  All keys will be added to the server")
+			fmt.Println("  No SSH key found locally (~/.ssh/id_*.pub) or on Hetzner")
+			fmt.Println("  Server will be created with a root password (shown once)")
 		}
 
 		// Prompt for optional Tailscale auth key
