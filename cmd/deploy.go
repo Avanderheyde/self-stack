@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/selfstack/selfstack/internal/config"
 	"github.com/selfstack/selfstack/internal/detect"
 	"github.com/spf13/cobra"
 )
@@ -58,15 +60,50 @@ var deployCmd = &cobra.Command{
 		}
 		fmt.Printf("Detected %s project: %s\n", pt, appName)
 
-		// POST to the deploy API
+		// Determine target: remote VPS or local
+		rc, _ := config.LoadRemoteConfig()
+		targetAPI := apiURL
+		if rc.IsConfigured() {
+			targetAPI = rc.APIURL()
+			// rsync files to VPS
+			remoteDir := fmt.Sprintf("~/.selfstack/apps/%s/", appName)
+			fmt.Printf("Syncing to %s:%s\n", rc.SSHTarget(), remoteDir)
+
+			mkdirCmd := exec.Command("ssh", rc.SSHTarget(), "mkdir", "-p", remoteDir)
+			if out, err := mkdirCmd.CombinedOutput(); err != nil {
+				return fmt.Errorf("create remote dir: %s: %w", string(out), err)
+			}
+
+			rsyncCmd := exec.Command("rsync", "-az", "--delete",
+				"--exclude", "node_modules",
+				"--exclude", ".git",
+				"--exclude", "__pycache__",
+				"--exclude", ".venv",
+				"--exclude", "venv",
+				"--exclude", ".next",
+				"--exclude", "dist",
+				"--exclude", "build",
+				"--exclude", "target",
+				"--exclude", ".DS_Store",
+				dir+"/", rc.SSHTarget()+":"+remoteDir,
+			)
+			rsyncCmd.Stdout = os.Stdout
+			rsyncCmd.Stderr = os.Stderr
+			if err := rsyncCmd.Run(); err != nil {
+				return fmt.Errorf("rsync to VPS failed: %w", err)
+			}
+			fmt.Println("  ✓ Files synced")
+		}
+
+		// POST to the deploy API (local or remote)
 		body, _ := json.Marshal(map[string]any{
 			"name":     appName,
 			"app_dir":  dir,
 			"env_vars": envVars,
 		})
-		resp, err := http.Post(apiURL+"/api/apps/deploy", "application/json", bytes.NewReader(body))
+		resp, err := http.Post(targetAPI+"/api/apps/deploy", "application/json", bytes.NewReader(body))
 		if err != nil {
-			return fmt.Errorf("failed to reach SelfStack API at %s: %w\nIs 'selfstack serve' running?", apiURL, err)
+			return fmt.Errorf("failed to reach SelfStack API at %s: %w\nIs 'selfstack serve' running?", targetAPI, err)
 		}
 		defer resp.Body.Close()
 
