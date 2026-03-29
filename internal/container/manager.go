@@ -89,7 +89,7 @@ func (m *Manager) HealthCheck(ctx context.Context, hostPort int, healthPath stri
 	deadline := time.Now().Add(m.timeout)
 	for time.Now().Before(deadline) {
 		resp, err := http.Get(url)
-		if err == nil && resp.StatusCode == 200 {
+		if err == nil && resp.StatusCode >= 200 && resp.StatusCode < 400 {
 			resp.Body.Close()
 			return nil
 		}

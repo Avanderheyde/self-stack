@@ -16,6 +16,11 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
+	// Enable WAL mode for concurrent access safety
+	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("enable WAL: %w", err)
+	}
 	s := &Store{db: db}
 	if err := s.migrate(); err != nil {
 		db.Close()
@@ -32,10 +37,11 @@ func (s *Store) migrate() error {
 		name         TEXT PRIMARY KEY,
 		display_name TEXT NOT NULL,
 		description  TEXT,
-		repo_url     TEXT NOT NULL,
+		repo_url     TEXT,
 		version      TEXT,
 		host_port    INTEGER NOT NULL,
 		status       TEXT NOT NULL DEFAULT 'stopped',
+		source_type  TEXT NOT NULL DEFAULT 'registry',
 		installed_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 	CREATE TABLE IF NOT EXISTS devices (

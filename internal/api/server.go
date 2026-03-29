@@ -42,6 +42,7 @@ func NewServer(appSvc *app.Service, reg *registry.Client, version string) *Serve
 		r.Get("/status", s.handleStatus)
 		r.Get("/apps", s.handleListApps)
 		r.Post("/apps/install", s.handleInstallApp)
+		r.Post("/apps/deploy", s.handleDeployApp)
 		r.Post("/apps/{name}/start", s.handleStartApp)
 		r.Post("/apps/{name}/stop", s.handleStopApp)
 		r.Get("/apps/{name}", s.handleGetApp)

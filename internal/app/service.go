@@ -10,6 +10,7 @@ import (
 
 	"github.com/selfstack/selfstack/internal/config"
 	"github.com/selfstack/selfstack/internal/container"
+	"github.com/selfstack/selfstack/internal/detect"
 	"github.com/selfstack/selfstack/internal/manifest"
 	"github.com/selfstack/selfstack/internal/portless"
 	"github.com/selfstack/selfstack/internal/registry"
@@ -101,6 +102,160 @@ func (s *Service) Install(ctx context.Context, appName string, onProgress Progre
 		return err
 	}
 	portless.Alias(appName, port)
+	return nil
+}
+
+// Deploy takes a local project directory, auto-detects the project type,
+// generates necessary Docker/compose/manifest files, and deploys the app.
+// This is the "selfstack deploy" flow for vibe-coded apps.
+func (s *Service) Deploy(ctx context.Context, appName, projectDir string, envVars map[string]string, onProgress ProgressFunc) error {
+	report(onProgress, "Detecting project type")
+	pt := detect.DetectProjectType(projectDir)
+	if pt == detect.TypeUnknown {
+		return fmt.Errorf("cannot detect project type in %s — add a Dockerfile or docker-compose.yml", projectDir)
+	}
+
+	appDir := filepath.Join(config.AppsDir(), appName)
+
+	// Check if this is a redeploy
+	existing, err := s.store.GetApp(appName)
+	isRedeploy := err == nil && existing.Name != ""
+
+	// Copy project to app directory (or overwrite for redeploy)
+	if err := copyDir(projectDir, appDir); err != nil {
+		return fmt.Errorf("copy project: %w", err)
+	}
+
+	cleanup := func() {
+		if !isRedeploy {
+			os.RemoveAll(appDir)
+			s.store.ReleasePort(appName)
+		}
+	}
+
+	// Generate Dockerfile if needed
+	if pt != detect.TypeDockerCompose && pt != detect.TypeDockerfile {
+		report(onProgress, "Generating Dockerfile")
+		content, err := detect.GenerateDockerfile(appDir, pt)
+		if err != nil {
+			cleanup()
+			return fmt.Errorf("generate dockerfile: %w", err)
+		}
+		if err := os.WriteFile(filepath.Join(appDir, "Dockerfile"), []byte(content), 0644); err != nil {
+			cleanup()
+			return fmt.Errorf("write dockerfile: %w", err)
+		}
+	}
+
+	containerPort := detect.DefaultPort(pt)
+
+	// Generate docker-compose.yml if needed (when we have a Dockerfile but no compose)
+	if pt != detect.TypeDockerCompose {
+		composeContent := detect.GenerateComposeFile(appName, containerPort)
+		if err := os.WriteFile(filepath.Join(appDir, "docker-compose.yml"), []byte(composeContent), 0644); err != nil {
+			cleanup()
+			return fmt.Errorf("write docker-compose.yml: %w", err)
+		}
+	}
+
+	// Generate selfstack.yml manifest
+	manifestContent := detect.GenerateManifestYAML(appName, containerPort)
+	if err := os.WriteFile(filepath.Join(appDir, "selfstack.yml"), []byte(manifestContent), 0644); err != nil {
+		cleanup()
+		return fmt.Errorf("write manifest: %w", err)
+	}
+
+	m, err := manifest.ParseFile(filepath.Join(appDir, "selfstack.yml"))
+	if err != nil {
+		cleanup()
+		return fmt.Errorf("parse generated manifest: %w", err)
+	}
+
+	// For redeploy: stop old container (preserve volumes)
+	if isRedeploy {
+		report(onProgress, "Stopping previous version")
+		s.mgr.Stop(ctx, appDir, m.Runtime.Entry, appName)
+	}
+
+	// Allocate port (reuse existing for redeploy)
+	hostPort := existing.HostPort
+	if !isRedeploy {
+		hostPort, err = s.store.AllocatePort(appName)
+		if err != nil {
+			cleanup()
+			return fmt.Errorf("allocate port: %w", err)
+		}
+	}
+
+	// Merge env vars: manifest defaults + user-provided
+	mergedEnv := make(map[string]string)
+	for _, c := range m.Config {
+		mergedEnv[c.Key] = c.Default
+	}
+	for k, v := range envVars {
+		mergedEnv[k] = v
+	}
+
+	report(onProgress, "Building container")
+	if err := s.mgr.Build(ctx, appDir, m.Runtime.Entry, appName); err != nil {
+		cleanup()
+		return fmt.Errorf("build: %w", err)
+	}
+
+	report(onProgress, "Starting app")
+	if err := s.mgr.Up(ctx, appDir, m.Runtime.Entry, appName, m.Expose.Port, hostPort, mergedEnv); err != nil {
+		cleanup()
+		return fmt.Errorf("start: %w", err)
+	}
+
+	if m.Expose.Health != "" {
+		report(onProgress, "Waiting for health check")
+		if err := s.mgr.HealthCheck(ctx, hostPort, m.Expose.Health); err != nil {
+			// Leave container running for debugging (per plan)
+			return fmt.Errorf("health check failed (container still running for debugging): %w", err)
+		}
+	}
+
+	if isRedeploy {
+		if err := s.store.UpdateAppStatus(appName, "running"); err != nil {
+			return err
+		}
+	} else {
+		if err := s.store.InsertApp(store.App{
+			Name: appName, DisplayName: appName, Description: "Deployed via selfstack deploy",
+			HostPort: hostPort, Status: "running", SourceType: "deploy",
+		}); err != nil {
+			return err
+		}
+	}
+
+	portless.Alias(appName, hostPort)
+	return nil
+}
+
+// copyDir copies the contents of src into dst, creating dst if needed.
+// Skips common build artifact directories.
+func copyDir(src, dst string) error {
+	if err := os.MkdirAll(dst, 0755); err != nil {
+		return err
+	}
+	cmd := exec.Command("rsync", "-a",
+		"--exclude", "node_modules",
+		"--exclude", ".git",
+		"--exclude", "__pycache__",
+		"--exclude", ".venv",
+		"--exclude", "venv",
+		"--exclude", ".next",
+		"--exclude", "dist",
+		"--exclude", "build",
+		"--exclude", "target",
+		"--exclude", ".DS_Store",
+		src+"/", dst+"/",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("rsync: %s: %w", string(out), err)
+	}
 	return nil
 }
 

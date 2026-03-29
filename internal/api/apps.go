@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/selfstack/selfstack/internal/app"
+	"github.com/selfstack/selfstack/internal/detect"
 	"github.com/selfstack/selfstack/internal/registry"
 	"github.com/selfstack/selfstack/internal/store"
 )
@@ -85,6 +87,55 @@ func (s *Server) handleInstallApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sseEvent(w, flusher, map[string]any{"done": true, "app": installed})
+}
+
+func (s *Server) handleDeployApp(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name    string            `json:"name"`
+		AppDir  string            `json:"app_dir"`
+		EnvVars map[string]string `json:"env_vars"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, 400, "invalid request body")
+		return
+	}
+	if req.Name == "" || req.AppDir == "" {
+		jsonError(w, 400, "name and app_dir are required")
+		return
+	}
+	if err := detect.ValidateAppName(req.Name); err != nil {
+		jsonError(w, 400, err.Error())
+		return
+	}
+	// Validate app_dir exists and is a directory
+	if info, err := os.Stat(req.AppDir); err != nil || !info.IsDir() {
+		jsonError(w, 400, "app_dir must be an existing directory")
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		jsonError(w, 500, "streaming not supported")
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	onProgress := app.ProgressFunc(func(step string) {
+		sseEvent(w, flusher, map[string]string{"step": step})
+	})
+
+	if err := s.appSvc.Deploy(r.Context(), req.Name, req.AppDir, req.EnvVars, onProgress); err != nil {
+		sseEvent(w, flusher, map[string]string{"error": err.Error()})
+		return
+	}
+	deployed, err := s.appSvc.Get(req.Name)
+	if err != nil {
+		sseEvent(w, flusher, map[string]string{"error": err.Error()})
+		return
+	}
+	sseEvent(w, flusher, map[string]any{"done": true, "app": deployed})
 }
 
 func (s *Server) handleStartApp(w http.ResponseWriter, r *http.Request) {

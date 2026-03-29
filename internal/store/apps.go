@@ -13,13 +13,18 @@ type App struct {
 	Version     string
 	HostPort    int
 	Status      string
+	SourceType  string // "registry" or "deploy"
 }
 
 func (s *Store) InsertApp(a App) error {
+	sourceType := a.SourceType
+	if sourceType == "" {
+		sourceType = "registry"
+	}
 	_, err := s.db.Exec(
-		`INSERT INTO apps (name, display_name, description, repo_url, version, host_port, status)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		a.Name, a.DisplayName, a.Description, a.RepoURL, a.Version, a.HostPort, a.Status,
+		`INSERT INTO apps (name, display_name, description, repo_url, version, host_port, status, source_type)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		a.Name, a.DisplayName, a.Description, a.RepoURL, a.Version, a.HostPort, a.Status, sourceType,
 	)
 	if err != nil {
 		return fmt.Errorf("insert app: %w", err)
@@ -29,10 +34,12 @@ func (s *Store) InsertApp(a App) error {
 
 func (s *Store) GetApp(name string) (App, error) {
 	var a App
+	var repoURL sql.NullString
 	err := s.db.QueryRow(
-		`SELECT name, display_name, description, repo_url, version, host_port, status
+		`SELECT name, display_name, description, repo_url, version, host_port, status, source_type
 		 FROM apps WHERE name = ?`, name,
-	).Scan(&a.Name, &a.DisplayName, &a.Description, &a.RepoURL, &a.Version, &a.HostPort, &a.Status)
+	).Scan(&a.Name, &a.DisplayName, &a.Description, &repoURL, &a.Version, &a.HostPort, &a.Status, &a.SourceType)
+	a.RepoURL = repoURL.String
 	if err == sql.ErrNoRows {
 		return App{}, fmt.Errorf("app %q not found", name)
 	}
@@ -44,7 +51,7 @@ func (s *Store) GetApp(name string) (App, error) {
 
 func (s *Store) ListApps() ([]App, error) {
 	rows, err := s.db.Query(
-		`SELECT name, display_name, description, repo_url, version, host_port, status
+		`SELECT name, display_name, description, repo_url, version, host_port, status, source_type
 		 FROM apps ORDER BY name`,
 	)
 	if err != nil {
@@ -55,9 +62,11 @@ func (s *Store) ListApps() ([]App, error) {
 	var apps []App
 	for rows.Next() {
 		var a App
-		if err := rows.Scan(&a.Name, &a.DisplayName, &a.Description, &a.RepoURL, &a.Version, &a.HostPort, &a.Status); err != nil {
+		var repoURL sql.NullString
+		if err := rows.Scan(&a.Name, &a.DisplayName, &a.Description, &repoURL, &a.Version, &a.HostPort, &a.Status, &a.SourceType); err != nil {
 			return nil, fmt.Errorf("scan app: %w", err)
 		}
+		a.RepoURL = repoURL.String
 		apps = append(apps, a)
 	}
 	return apps, rows.Err()
