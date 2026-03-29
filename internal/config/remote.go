@@ -11,8 +11,9 @@ import (
 
 // RemoteConfig holds the VPS connection settings for selfstack deploy.
 type RemoteConfig struct {
-	Host    string `yaml:"host"`     // user@host SSH target
-	APIPort int    `yaml:"api_port"` // port where selfstack serve runs on the VPS
+	Host     string `yaml:"host"`      // user@host SSH target
+	APIPort  int    `yaml:"api_port"`  // port where selfstack serve runs on the VPS
+	ServerID string `yaml:"server_id"` // Hetzner server ID (for cloud destroy)
 }
 
 func (r RemoteConfig) IsConfigured() bool {
