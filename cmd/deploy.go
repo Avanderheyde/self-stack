@@ -13,6 +13,7 @@ import (
 
 	"github.com/selfstack/selfstack/internal/config"
 	"github.com/selfstack/selfstack/internal/detect"
+	"github.com/selfstack/selfstack/internal/tailscale"
 	"github.com/spf13/cobra"
 )
 
@@ -131,6 +132,24 @@ var deployCmd = &cobra.Command{
 					fmt.Printf("\n✓ %s deployed successfully on port %d\n", appName, port)
 					fmt.Printf("  Local: http://%s.selfstack.local\n", appName)
 					fmt.Printf("  Direct: http://localhost:%d\n", port)
+
+					// Configure Tailscale Serve for remote access
+					if rc.IsConfigured() {
+						tsURL, err := tailscale.ServeRemote(rc.SSHTarget(), port)
+						if err != nil {
+							fmt.Printf("  ⚠ Tailscale Serve not configured: %v\n", err)
+							fmt.Println("    Apps still accessible via VPS IP or Tailscale IP directly")
+						} else {
+							fmt.Printf("  Tailscale: %s\n", tsURL)
+						}
+					} else if tailscale.Available() {
+						tsURL, err := tailscale.Serve(port)
+						if err != nil {
+							fmt.Printf("  ⚠ Tailscale Serve not configured: %v\n", err)
+						} else {
+							fmt.Printf("  Tailscale: %s\n", tsURL)
+						}
+					}
 				}
 				return nil
 			}
