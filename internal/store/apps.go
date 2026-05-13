@@ -13,7 +13,7 @@ type App struct {
 	Version     string
 	HostPort    int
 	Status      string
-	SourceType  string // "registry" or "deploy"
+	SourceType  string // "registry", "deploy", or "local"
 }
 
 func (s *Store) InsertApp(a App) error {

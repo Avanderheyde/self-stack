@@ -53,7 +53,9 @@ func (s *Server) handleGetApp(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleInstallApp(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name string `json:"name"`
+		Name      string `json:"name"`
+		LocalPath string `json:"local_path"`
+		SeedData  string `json:"seed_data"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, 400, "invalid request body")
@@ -77,8 +79,14 @@ func (s *Server) handleInstallApp(w http.ResponseWriter, r *http.Request) {
 		sseEvent(w, flusher, map[string]string{"step": step})
 	})
 
-	if err := s.appSvc.Install(r.Context(), req.Name, onProgress); err != nil {
-		sseEvent(w, flusher, map[string]string{"error": err.Error()})
+	var installErr error
+	if req.LocalPath != "" {
+		installErr = s.appSvc.InstallLocal(r.Context(), req.Name, req.LocalPath, req.SeedData, onProgress)
+	} else {
+		installErr = s.appSvc.Install(r.Context(), req.Name, onProgress)
+	}
+	if installErr != nil {
+		sseEvent(w, flusher, map[string]string{"error": installErr.Error()})
 		return
 	}
 	installed, err := s.appSvc.Get(req.Name)
