@@ -1,0 +1,19 @@
+/selfstack
+/selfstack-eval
+/sre-agent
+/sre-agent-linux-arm64
+/dashboard/node_modules
+/dashboard/dist
+*.db
+.selfstack/
+.playwright-mcp/
+
+# Eval harness run artifacts — large, per-run JSON + evidence, regenerable
+evals/runs/
+
+# Local secrets (ANTHROPIC_API_KEY etc) — never committed
+.env
+.env.local
+
+# Claude Code local state
+.claude/
