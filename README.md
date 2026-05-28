@@ -32,6 +32,43 @@ Full design context: [`docs/plans/2026-02-18-selfstack-design.md`](docs/plans/20
 
 ---
 
+## Prerequisites
+
+Gather these before the first `selfstack cloud setup`:
+
+| What | Why | Required? |
+|---|---|---|
+| [Hetzner Cloud](https://console.hetzner.cloud/) API token (read/write) | Provisions the cax11 VPS | Yes |
+| [Tailscale](https://login.tailscale.com/admin/settings/keys) auth key | Private access to deployed apps; you can also authenticate the VPS manually later | Optional |
+| An SSH key on your machine (`~/.ssh/id_ed25519.pub` etc.) | Auto-uploaded to Hetzner so you can SSH to the box | Yes |
+| `git` + `rsync` locally | `selfstack deploy` rsyncs your project to the VPS | Yes |
+
+The VPS itself needs nothing pre-installed — `cloud setup` installs Docker,
+Docker Compose, and Tailscale via cloud-init. For **bring-your-own-VPS**
+(`selfstack init`) instead, the box must already have Docker + Docker Compose
+(v2 plugin or legacy `docker-compose`) and be reachable over SSH with key auth.
+
+---
+
+## Quickstart (copy-paste)
+
+```bash
+# Install
+curl -fsSL https://raw.githubusercontent.com/Avanderheyde/self-stack/main/scripts/install.sh | sh
+
+# One-time: provision a VPS (prompts for Hetzner token + optional Tailscale key)
+selfstack cloud setup
+
+# Deploy the app in the current directory
+cd /path/to/your/app
+selfstack deploy
+
+# See it running + get the Tailscale URL
+selfstack list
+```
+
+---
+
 ## 30-second demo
 
 ```bash
