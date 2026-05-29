@@ -87,7 +87,7 @@ selfstack deploy
   # Auto-generates Docker config if missing
   # rsyncs to the VPS, builds, starts, health-checks
   # Configures `tailscale serve` for the chosen port
-  # → https://your-vps.tail-scale.ts.net:10001
+  # → https://your-vps.<your-tailnet>.ts.net:10001
 ```
 
 Open the URL from your phone. Done.
@@ -264,4 +264,4 @@ scripts/secret-audit.sh
 
 ## Status
 
-Pre-launch. Founder dogfoods it for personal apps; no external users yet. The Paradigm MVP demo (`docs/mvp-demo.md`) is the next forcing function.
+Pre-launch. Currently dogfooding on personal apps; first measured MVP demo runs will be documented in `docs/mvp-demo.md`.
