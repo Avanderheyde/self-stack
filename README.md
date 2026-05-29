@@ -6,6 +6,8 @@
 
 You vibe-code a personal expense tracker with Claude. It works on `localhost`. Then what?
 
+SelfStack is built for the moment after generation. LLMs can produce useful personal apps quickly, but most of them die on localhost because deployment, private access, updates, and data ownership are still annoying. SelfStack turns those generated apps into durable software running on infrastructure you own.
+
 ```bash
 selfstack deploy
 ```
