@@ -83,6 +83,35 @@ export default function AppDetailPage() {
     try { await fn(name); await load(); } finally { setBusy(false); }
   };
 
+  // Rebuilds/updates the container from source. Used by both the "Update
+  // available" banner (registry apps) and the "Rebuild" button (local apps,
+  // which are symlinked to the source dir so a rebuild picks up code edits).
+  const startUpdate = async () => {
+    if (!name) return;
+    setUpdating(true);
+    setUpdateStep('');
+    try {
+      await updateApp(name, setUpdateStep);
+    } catch { /* SSE may disconnect on navigate, that's ok */ }
+    const pollDone = async () => {
+      try {
+        const op = await getOperation(name);
+        if (op.active) {
+          setUpdateStep(op.step);
+          setTimeout(pollDone, 1000);
+        } else {
+          setUpdating(false);
+          setUpdateStep('');
+          await load();
+        }
+      } catch {
+        setUpdating(false);
+        setUpdateStep('');
+      }
+    };
+    pollDone();
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center py-16">
@@ -204,72 +233,48 @@ export default function AppDetailPage() {
           </div>
         </div>
 
-        {latestVersion && isNewerVersion(latestVersion, app.Version) && (
+        {latestVersion && isNewerVersion(latestVersion, app.Version) && !updating && (
           <div className="mt-6 px-4 py-3 bg-amber-50 border border-amber-100 rounded-xl">
             <div className="flex items-center justify-between gap-3">
               <span className="text-sm text-amber-800">
                 Update available (v{app.Version || '0.0.0'} → v{latestVersion})
               </span>
-              {!updating && (
-                <button
-                  onClick={async () => {
-                    if (!name) return;
-                    setUpdating(true);
-                    setUpdateStep('');
-                    try {
-                      await updateApp(name, setUpdateStep);
-                    } catch { /* SSE may disconnect on navigate, that's ok */ }
-                    // Poll for completion
-                    const pollDone = async () => {
-                      try {
-                        const op = await getOperation(name);
-                        if (op.active) {
-                          setUpdateStep(op.step);
-                          setTimeout(pollDone, 1000);
-                        } else {
-                          setUpdating(false);
-                          setUpdateStep('');
-                          await load();
-                        }
-                      } catch {
-                        setUpdating(false);
-                        setUpdateStep('');
-                      }
-                    };
-                    pollDone();
-                  }}
-                  disabled={busy}
-                  className="text-sm px-4 py-1.5 rounded-xl bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 transition-colors shrink-0"
-                >
-                  Update
-                </button>
-              )}
+              <button
+                onClick={startUpdate}
+                disabled={busy}
+                className="text-sm px-4 py-1.5 rounded-xl bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 transition-colors shrink-0"
+              >
+                Update
+              </button>
             </div>
-            {updating && (() => {
-              const steps = ['Stopping app', 'Pulling updates', 'Building container', 'Starting app'];
-              const currentIdx = updateStep ? steps.findIndex((s) => s === updateStep) : -1;
-              const progress = currentIdx >= 0 ? ((currentIdx + 1) / steps.length) * 100 : 5;
-              return (
-                <div className="mt-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-medium text-amber-700">
-                      {updateStep || 'Preparing...'}
-                    </span>
-                    <span className="text-xs text-amber-600">
-                      {currentIdx >= 0 ? `${currentIdx + 1}/${steps.length}` : ''}
-                    </span>
-                  </div>
-                  <div className="w-full h-1.5 bg-amber-200 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-amber-500 rounded-full transition-all duration-500 ease-out"
-                      style={{ width: `${progress}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })()}
           </div>
         )}
+
+        {updating && (() => {
+          const steps = app.SourceType === 'local'
+            ? ['Stopping app', 'Building container', 'Starting app']
+            : ['Stopping app', 'Pulling updates', 'Building container', 'Starting app'];
+          const currentIdx = updateStep ? steps.findIndex((s) => s === updateStep) : -1;
+          const progress = currentIdx >= 0 ? ((currentIdx + 1) / steps.length) * 100 : 5;
+          return (
+            <div className="mt-6 px-4 py-3 bg-amber-50 border border-amber-100 rounded-xl">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-amber-700">
+                  {updateStep || 'Preparing...'}
+                </span>
+                <span className="text-xs text-amber-600">
+                  {currentIdx >= 0 ? `${currentIdx + 1}/${steps.length}` : ''}
+                </span>
+              </div>
+              <div className="w-full h-1.5 bg-amber-200 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-amber-500 rounded-full transition-all duration-500 ease-out"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+          );
+        })()}
 
         {!updating && !removing && <div className="flex flex-wrap gap-2 mt-6">
           {app.Status === 'running' && (
@@ -298,6 +303,16 @@ export default function AppDetailPage() {
               className="text-sm font-medium px-5 py-2.5 rounded-xl bg-[var(--color-text-primary)] text-white hover:bg-gray-700 disabled:opacity-50 active:scale-95 transition-all duration-150"
             >
               Start
+            </button>
+          )}
+          {app.SourceType === 'local' && (
+            <button
+              onClick={startUpdate}
+              disabled={busy}
+              title="Rebuild the container from the current local source"
+              className="text-sm font-medium px-5 py-2.5 rounded-xl bg-gray-100 text-[var(--color-text-secondary)] hover:bg-gray-200 disabled:opacity-50 active:scale-95 transition-all duration-150"
+            >
+              Rebuild
             </button>
           )}
           <button

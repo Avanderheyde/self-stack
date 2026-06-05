@@ -79,7 +79,11 @@ export default function StorePage() {
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-16">
-          <div className="text-4xl mb-3">?</div>
+          <div className="w-14 h-14 rounded-2xl bg-gray-50 border border-[var(--color-border)] flex items-center justify-center mx-auto mb-4">
+            <svg className="w-7 h-7 text-[var(--color-text-muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+            </svg>
+          </div>
           <p className="text-[var(--color-text-secondary)] font-medium">No apps found</p>
           <p className="text-sm text-[var(--color-text-muted)] mt-1">Try a different search term</p>
         </div>
