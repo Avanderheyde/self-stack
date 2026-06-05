@@ -15,7 +15,7 @@ trees instead of cloning from the registry.
 |---|---|---|---|---|---|---|
 | AgentBoard | `~/Code/agentboard` | `agentboard` | 3000 | yes (`data:/app/data`) | none | ready |
 | Track Basket | `~/Code/basket-tracker` | `track-basket` | 3000 | no (ephemeral) | none | ready |
-| WealthStack | `~/Code/wealth-stack` | `wealthstack` | 3000 | yes (`data:/app/data`) | 5 Plaid vars | ready after port fix |
+| WealthStack | `~/Code/wealth-stack` | `wealthstack` | 3000 | yes (`data:/app/data`) | 5 Plaid vars | ready (port fix applied, build ✅) |
 
 Vibe Costs (`~/Code/vibe-cost-tracker`) is also valid but the demo storyline
 overlaps with WealthStack ("personal finance, self-hosted"), so it sits as a
@@ -40,8 +40,10 @@ For each app:
 
 ## Demo commands
 
-The daemon must be running and the dashboard at `http://localhost:7766`.
-Start it in a separate shell with `selfstack serve` if it's not up.
+The daemon must be running and the dashboard at `http://localhost:8080`
+(`config.DefaultPort`; override with `selfstack serve -p <port>`). Start it
+in a separate shell with `selfstack serve` if it's not up. The reverse
+proxy listens separately on `:8081`.
 
 ```bash
 # AgentBoard — no env, persistent kanban board
@@ -64,9 +66,10 @@ selfstack list
 selfstack status agentboard
 ```
 
-The dashboard at `http://localhost:7766` lists the three apps with their
-allocated host ports. Each app is also reachable at `http://<name>.localhost`
-via portless (`internal/portless`).
+The dashboard at `http://localhost:8080` lists the three apps with their
+allocated host ports. If portless is installed, each app is also reachable
+at `http://<name>.localhost:1355` (the default portless proxy port; the
+actual port is read back via `portless list` in `internal/portless`).
 
 If a Tailscale node is configured (`selfstack cloud setup`), `selfstack
 deploy` from the app dir pushes to the VPS and prints the public
@@ -89,7 +92,9 @@ Verified with `docker compose config` before and after:
 # after:  SELFSTACK_HOST_PORT=10104 → published "10104"
 ```
 
-One-line change in `/Users/jarvis/Code/wealth-stack/docker-compose.yml`.
+One-line change in `/Users/jarvis/Code/wealth-stack/docker-compose.yml`,
+now committed in that repo as `78af52a fix: use selfstack allocated host
+port`. The current compose maps `${SELFSTACK_HOST_PORT:-3000}:3000`.
 
 ### No fixes needed for the other three
 
@@ -151,13 +156,74 @@ go test ./internal/manifest/...
 cd ~/Code/<app> && SELFSTACK_HOST_PORT=10101 \
   docker compose -p selfstack-validate-<name> config
 
-# real image build, basket-tracker only (kept local, no push)
-cd ~/Code/basket-tracker && SELFSTACK_HOST_PORT=10103 \
-  docker compose -p selfstack-proof-basket build
+# real image build — all four apps (kept local, no push)
+cd ~/Code/<app> && SELFSTACK_HOST_PORT=101xx \
+  docker compose -p ss-proof-<name> build
+
+# full live install happy-path (Track Basket) against a running daemon
+selfstack install track-basket --local ~/Code/basket-tracker
+curl http://localhost:10003/api/health   # -> {"status":"ok"}
+selfstack remove track-basket
 ```
 
-The full `install`/`deploy` happy-path against a live daemon was not
-run from this worktree because other agents are setting up the cloud +
-deploy paths in parallel. The structural validation above is enough to
-demo against a freshly-started `selfstack serve` when the other work
-lands.
+## Live verification (2026-06-04)
+
+Docker was started and the bundle was validated end-to-end, not just
+structurally. Everything below was actually run.
+
+### All four images build
+
+`docker compose build` succeeded for every app (Docker server 29.2.1):
+
+| App | Image | Size | Build |
+|---|---|---|---|
+| AgentBoard | `selfstack-agentboard-app` | 663 MB | ✅ exit 0 |
+| Track Basket | `selfstack-track-basket-app` | 334 MB | ✅ exit 0 |
+| WealthStack | `selfstack-wealthstack` | 304 MB | ✅ exit 0 |
+| Vibe Costs | `selfstack-vibe-costs-app` | 246 MB | ✅ exit 0 |
+
+### Full live `selfstack install` (Track Basket)
+
+Ran the real CLI install path against a running daemon — the SSE stream
+walked every step and the health gate passed:
+
+```
+$ selfstack install track-basket --local ~/Code/basket-tracker
+  Validating local path
+  Linking source directory
+  Building container
+  Starting app
+  Waiting for health check
+Installed track-basket successfully
+```
+
+- Container came up as `selfstack-track-basket-app-1`, mapping
+  `0.0.0.0:10003->3000/tcp` — the SelfStack-allocated host port, not a
+  hardcoded 3000.
+- `curl http://localhost:10003/api/health` → `{"status":"ok"}` (HTTP 200).
+  This is the whole chain proven live: install → symlink → build →
+  `docker compose up` → health check → store row.
+- `selfstack list` / `selfstack status` reflected the running app.
+- Torn down afterward with `selfstack remove` + `docker compose down`.
+
+### Structural checks (also re-run)
+
+- `go test ./internal/manifest/...` → `ok` (all four manifests parse).
+- `docker compose config` for **all four** apps with `SELFSTACK_HOST_PORT`
+  exported resolves correct `published`→`target` pairs: agentboard
+  `→3000`, track-basket `→3000`, wealthstack `→3000`, vibe-costs `→80`
+  (vibe-costs correctly targets its `expose.port: 80`).
+- `SELFSTACK_HOST_PORT` injection confirmed at
+  `internal/container/manager.go:36`.
+- Corrected two stale URLs in this doc: the dashboard is `:8080`
+  (`config.DefaultPort`), not `:7766`, and portless apps are at
+  `<name>.localhost:1355`, not bare `<name>.localhost`.
+
+### Demo gotcha worth knowing
+
+SelfStack derives the compose **project name** from the app name
+(`selfstack-<name>`) and allocates one host port per name. So installing
+the *same* app name twice — or running two daemons against one Docker
+host — collides on both the project and the port: the second `up` adopts
+or recreates the first's container, and a `down` tears down whichever is
+there. For the demo, install each app once against a single daemon.
